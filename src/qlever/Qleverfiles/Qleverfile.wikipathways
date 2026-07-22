@@ -1,0 +1,40 @@
+# Qleverfile for WikiPathways, use with https://github.com/ad-freiburg/qlever-control
+#
+# qlever get-data  # takes ~3 seconds, generates TTL of size ~600 MB
+# qlever index     # takes ~20 seconds and little RAM (on an AMD Ryzen 9 5900X)
+# qlever start     # instant
+#
+# Limitations: does not include the ontologies (WP, GPML, ChEBI, PW, CLO, ...) yet
+
+[data]
+NAME             = wikipathways
+RELEASE          = current
+GET_DATA_URL     = https://data.wikipathways.org/${RELEASE}/rdf
+GET_DATA_CMD     = wget -O wikipathways-rdf-void.ttl ${GET_DATA_URL}/wikipathways-rdf-void.ttl && \
+                    wget ${GET_DATA_URL}/wikipathways-${RELEASE}-rdf-wp.zip && \
+                      unzip -qq -c wikipathways-${RELEASE}-rdf-wp.zip -x wp/wpOntology.ttl > wikipathways-rdf-wp.ttl && \
+                    wget ${GET_DATA_URL}/wikipathways-${RELEASE}-rdf-gpml.zip && 
+                      unzip -qq -c wikipathways-${RELEASE}-rdf-gpml.zip -x gpml/gpmlOntology.ttl > wikipathways-rdf-gpml.ttl && \
+                    wget ${GET_DATA_URL}/wikipathways-${RELEASE}-rdf-authors.zip && \
+                      unzip -qq -c wikipathways-${RELEASE}-rdf-authors.zip > wikipathways-rdf-authors.ttl && \
+                    cat wikipathways-rdf-*.ttl | grep ^@prefix | tr -s ' ' | sort -u > ${NAME}.prefix-definitions
+DESCRIPTION      = WikiPathways RDF, from ${GET_DATA_URL}
+TEXT_DESCRIPTION = All literals, search with FILTER KEYWORDS(?text, "...")
+
+[index]
+INPUT_FILES     = ${data:NAME}.prefix-definitions wikipathways-rdf-wp.ttl wikipathways-rdf-gpml.ttl wikipathways-rdf-void.ttl wikipathways-rdf-authors.ttl
+CAT_INPUT_FILES = cat ${INPUT_FILES}
+SETTINGS_JSON   = { "ascii-prefixes-only": false, "num-triples-per-batch": 1000000, "prefixes-external": [""] }
+TEXT_INDEX      = from_literals
+
+[server]
+PORT               = 7040
+ACCESS_TOKEN       = ${data:NAME}
+MEMORY_FOR_QUERIES = 5G
+
+[runtime]
+SYSTEM = docker
+IMAGE  = docker.io/adfreiburg/qlever:latest
+
+[ui]
+UI_CONFIG = wikipathways

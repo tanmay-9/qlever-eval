@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qlever-eval"
+description = "Command-line tool from the QLever team for setting up and evaluating graph databases"
+version = "0.1.0"
+authors = [
+    { name = "Tanmay Garg", email = "gargt@cs.uni-freiburg.de" }
+]
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+
+keywords = ["Graph database", "Triplestore", "Knowledge graphs", "SPARQL", "RDF", "Benchmarking"]
+
+classifiers = [
+ "Topic :: Database :: Database Engines/Servers",
+ "Topic :: Database :: Front-Ends"
+]
+
+dependencies = [ "psutil", "termcolor", "argcomplete", "pyyaml", "rdflib", "requests-sse", "tqdm>=4.60.0", "matplotlib", "numpy" ]
+
+[project.optional-dependencies]
+dev = [ "ruff", "pre-commit", "pytest" ]
+
+[project.urls]
+homepage = "https://github.com/ad-freiburg/qlever"
+documentation = "https://docs.qlever.dev"
+repository = "https://github.com/ad-freiburg/qlever.git"
+bugtracker = "https://github.com/ad-freiburg/qlever/issues"
+
+[project.scripts]
+"qlever" = "qlever.qlever_main:main"
+"qoxigraph" = "qlever.qlever_main:main"
+
+[tool.setuptools]
+package-data = { "qlever" = ["Qleverfiles/*", "evaluation/www/*"] }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 79 
+[tool.ruff.lint]
+extend-select = ["I"]

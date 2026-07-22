@@ -1,0 +1,73 @@
+name: End-to-end test for qlever
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  qlever-end-to-end-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [native, docker, podman]
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install qlever
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install the qlever binary on PATH
+        if: matrix.system == 'native'
+        run: |
+          # Install the repository signing key
+          sudo apt update && sudo apt install -y wget gpg ca-certificates
+          wget -qO - https://ad-research.cs.uni-freiburg.de/qlever-package-repository/pub.asc | gpg --dearmor - | sudo tee /usr/share/keyrings/qlever.gpg > /dev/null
+          # Add the repository
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/qlever.gpg] https://ad-research.cs.uni-freiburg.de/qlever-package-repository/ $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/qlever.list > /dev/null
+          # Fetch the available packages and install qlever
+          sudo apt update
+          sudo apt install -y qlever
+          qlever-server --help | head -3
+
+      - name: Make sure the container runtime is available and pull the image
+        if: matrix.system != 'native'
+        run: |
+          command -v ${{matrix.system}} || (sudo apt-get update && sudo apt-get install -y ${{matrix.system}})
+          ${{matrix.system}} --version
+          ${{matrix.system}} pull docker.io/adfreiburg/qlever
+
+      - name: End-to-end test on the olympics dataset (${{matrix.system}})
+        run: |
+          export QLEVER_ARGCOMPLETE_ENABLED=1
+          mkdir -p qlever-e2e && cd qlever-e2e
+          qlever setup-config olympics --system ${{matrix.system}}
+          qlever get-data
+          qlever index
+
+          echo "Checking that the resource-usage log and plot were produced"
+          test -s olympics.index.resource-usage-log.tsv
+          test -f olympics.resource-usage-plot.png
+
+          qlever index-stats
+          qlever start
+          qlever status
+          qlever query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qlever stop
+          ls -lh

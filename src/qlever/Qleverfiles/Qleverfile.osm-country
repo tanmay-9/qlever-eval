@@ -1,0 +1,39 @@
+# Qleverfile for OSM of some country, use with `qlever` CLI
+#
+# Make sure that `osm2rdf` is in your path. Set CONTINENT and COUNTRY
+# such that the link under GET_DATA_CMD exists (the names are usually
+# the canonical names).
+
+[data]
+CONTINENT    = europe
+COUNTRY      = switzerland
+NAME         = osm-${COUNTRY}
+GET_DATA_URL = https://download.geofabrik.de/${CONTINENT}/${COUNTRY}-latest.osm.pbf
+GET_DATA_CMD = wget -nc -O ${NAME}.pbf ${GET_DATA_URL}; (time osm2rdf ${NAME}.pbf -o ${NAME}.ttl --output-compression gz --cache . --iri-prefix-for-untagged-nodes http://www.openstreetmap.org/node/) 2>&1 | tee ${NAME}.osm2rdf-log.txt
+VERSION      = $$(ls -l --time-style=+%d.%m.%Y ${NAME}.pbf 2> /dev/null | cut -d' ' -f6)
+DESCRIPTION  = OSM ${COUNTRY}, PBF from ${GET_DATA_URL}, converted to RDF with osm2rdf, version ${VERSION}
+
+[index]
+INPUT_FILES      = ${data:NAME}.ttl.gz
+CAT_INPUT_FILES  = gunzip -c ${data:NAME}.ttl.gz
+PARALLEL_PARSING = true
+VOCABULARY_TYPE  = on-disk-compressed-geo-split
+STXXL_MEMORY     = 10G
+SETTINGS_JSON    = { "num-triples-per-batch": 10000000 }
+ENCODE_AS_ID     = https://www.openstreetmap.org/node/ http://www.openstreetmap.org/node/ https://www.openstreetmap.org/way/ https://www.openstreetmap.org/relation/ https://osm2rdf.cs.uni-freiburg.de/rdf/geom#osmnode_tagged_ https://osm2rdf.cs.uni-freiburg.de/rdf/geom#osmnode_untagged_ https://osm2rdf.cs.uni-freiburg.de/rdf/geom#osmway_ https://osm2rdf.cs.uni-freiburg.de/rdf/geom#osmrel_ https://www.openstreetmap.org/changeset/
+
+[server]
+PORT                        = 7025
+ACCESS_TOKEN                = ${data:NAME}
+MEMORY_FOR_QUERIES          = 20G
+CACHE_MAX_SIZE              = 10G
+CACHE_MAX_SIZE_SINGLE_ENTRY = 5G
+TIMEOUT                     = 100s
+
+[runtime]
+SYSTEM = docker
+IMAGE = docker.io/adfreiburg/qlever:latest
+
+[ui]
+UI_PORT   = 7000
+UI_CONFIG = osm-planet
