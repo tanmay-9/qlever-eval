@@ -9,8 +9,9 @@ to configure, index, start, query, and benchmark
 that competing systems can be set up and evaluated with the same commands and
 the same configuration style.
 
-Each supported database gets its own command (for example, `qoxigraph`) that
-mirrors the `qlever` command-line interface. All of them speak
+Each supported database is selected as an engine argument to `qeval` (for
+example, `qeval oxigraph`) and mirrors the `qeval qlever` command-line
+interface. All of them speak
 [RDF](https://www.w3.org/TR/rdf11-concepts/) and
 [SPARQL](https://www.w3.org/TR/sparql11-overview/), and all of them are driven
 by the same `Qleverfile` configuration format. This makes it straightforward to
@@ -69,7 +70,7 @@ can index and query each of them with the same configuration.
 
 The (Python) code lives in the `src/` directory. The shared command
 infrastructure is in `src/qlever`, and each supported database has its own
-package (for example, `src/qoxigraph`) that adapts it to that engine.
+package (for example, `src/oxigraph`) that adapts it to that engine.
 
 To make changes or add support for a new database:
 

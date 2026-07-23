@@ -14,7 +14,7 @@ from qlever.util import (
     run_command,
     tail_log_file,
 )
-from qoxigraph.commands.stop import StopCommand
+from oxigraph.commands.stop import StopCommand
 
 
 def timeout_supported(args, serve_ps: str) -> bool:

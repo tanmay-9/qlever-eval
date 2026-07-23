@@ -5,7 +5,7 @@ from qlever.commands import stop as qlever_stop
 from qlever.containerize import Containerize
 from qlever.log import log
 from qlever.util import stop_process_with_regex
-from qoxigraph.commands.status import StatusCommand
+from oxigraph.commands.status import StatusCommand
 
 
 class StopCommand(QleverCommand):

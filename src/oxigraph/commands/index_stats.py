@@ -11,7 +11,7 @@ from qlever.commands.index_stats import (
     get_time_unit_factor,
 )
 from qlever.log import log
-from qoxigraph.resource_usage.usage_plot import parse_logged_seconds
+from oxigraph.resource_usage.usage_plot import parse_logged_seconds
 
 
 class IndexStatsCommand(QleverIndexStatsCommand):
