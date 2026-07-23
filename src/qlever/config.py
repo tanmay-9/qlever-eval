@@ -207,7 +207,9 @@ class QleverConfig:
         # we then parse the Qleverfile or not.
         if qleverfile_exists and not autocomplete_mode:
             try:
-                qleverfile_config = Qleverfile.read(qleverfile_path, engine_name)
+                qleverfile_config = Qleverfile.read(
+                    qleverfile_path, engine_name
+                )
             except Exception as e:
                 log.info("")
                 log.error(f"Error parsing Qleverfile `{qleverfile_path}`: {e}")

@@ -1044,7 +1044,9 @@ class BenchmarkQueriesCommand(QleverCommand):
                 elif (
                     "exit code 52" in str(e) or "exit code 7" in str(e)
                 ) and args.restart_on_hang:
-                    server_restarted = restart_server(args.engine, start_only=True)
+                    server_restarted = restart_server(
+                        args.engine, start_only=True
+                    )
 
                 if args.log_level == "DEBUG":
                     traceback.print_exc()
