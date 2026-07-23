@@ -155,7 +155,7 @@ class StartCommand(QleverCommand):
         ):
             log.error(f"No Oxigraph index files for {args.name} found!\n")
             log.info(
-                f"Did you call `{script_name} index`? If you did, check "
+                f"Did you call `{script_name} {args.engine} index`? If you did, check "
                 "if .sst index files are present in index directory."
             )
             return False
@@ -163,7 +163,9 @@ class StartCommand(QleverCommand):
         # Check if server already alive at endpoint url from a previous run
         if is_server_alive(url=endpoint_url):
             log.error(f"Oxigraph server already running on {endpoint_url}\n")
-            log.info(f"To kill the existing server, use `{script_name} stop`")
+            log.info(
+                f"To kill the existing server, use `{script_name} {args.engine} stop`"
+            )
             return False
 
         # Remove old log file so that tail starts clean.

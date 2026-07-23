@@ -41,11 +41,9 @@ ACCESS_TOKEN =
 SYSTEM = docker
 IMAGE  = docker.io/adfreiburg/qlever:latest
 
-# UI_PORT specifies the port of the QLever UI web app, when you run `qlever ui`.
 # The UI_CONFIG must be one of the slugs from http://qlever.cs.uni-freiburg.de
 # (see the dropdown menu on the top right, the slug is the last part of the URL).
 # It determines the example queries and which SPARQL queries are launched to
 # obtain suggestions as you type a query.
 [ui]
-UI_PORT   = 8176
 UI_CONFIG = default

@@ -53,19 +53,19 @@ jobs:
 
       - name: End-to-end test on the imdb dataset (${{matrix.system}})
         run: |
-          export QLEVER_ARGCOMPLETE_ENABLED=1
+          export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p qoxigraph-e2e && cd qoxigraph-e2e
-          qoxigraph setup-config imdb --system ${{matrix.system}} 
-          qoxigraph get-data
-          qoxigraph index
+          qeval qoxigraph setup-config imdb --system ${{matrix.system}}
+          qeval qoxigraph get-data
+          qeval qoxigraph index
 
           echo "Checking that the resource-usage log and plot were produced"
           test -s imdb.index.resource-usage-log.tsv
           test -f imdb.resource-usage-plot.png
 
-          qoxigraph index-stats
-          qoxigraph start
-          qoxigraph status
-          qoxigraph query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
-          qoxigraph stop
+          qeval qoxigraph index-stats
+          qeval qoxigraph start
+          qeval qoxigraph status
+          qeval qoxigraph query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval qoxigraph stop
           ls -lh

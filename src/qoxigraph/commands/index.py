@@ -156,7 +156,7 @@ class IndexCommand(QleverCommand):
         if args.show:
             return True
 
-        if not util.input_files_exist(args.input_files):
+        if not util.input_files_exist(args.input_files, args.engine):
             return False
 
         # When running natively, check if the binary exists and works.

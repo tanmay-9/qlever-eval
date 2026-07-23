@@ -39,5 +39,4 @@ SYSTEM = docker
 IMAGE  = docker.io/adfreiburg/qlever
 
 [ui]
-PORT   = 7000
-CONFIG = wikimedia-commons
+UI_CONFIG = wikimedia-commons

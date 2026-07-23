@@ -341,7 +341,7 @@ class IndexCommand(QleverCommand):
             return False
 
         # Check if all of the input files exist.
-        if not input_files_exist(args.input_files):
+        if not input_files_exist(args.input_files, args.engine):
             return False
 
         # Check if index files (name.index.*) already exist.

@@ -33,8 +33,7 @@ repository = "https://github.com/ad-freiburg/qlever.git"
 bugtracker = "https://github.com/ad-freiburg/qlever/issues"
 
 [project.scripts]
-"qlever" = "qlever.qlever_main:main"
-"qoxigraph" = "qlever.qlever_main:main"
+"qeval" = "qlever.qlever_main:main"
 
 [tool.setuptools]
 package-data = { "qlever" = ["Qleverfiles/*", "evaluation/www/*"] }

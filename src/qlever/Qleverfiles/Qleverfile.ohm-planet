@@ -38,4 +38,4 @@ SYSTEM = docker
 IMAGE  = adfreiburg/qlever:latest
 
 [ui]
-CONFIG = ohm-planet
+UI_CONFIG = ohm-planet
