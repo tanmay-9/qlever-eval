@@ -196,17 +196,15 @@ class UsagePlot:
 
     def __init__(
         self,
-        dataset: str,
         args,
         *,
         output_dir: Path | None = None,
-        plot_max_points: int = 500,
     ):
-        self.dataset = dataset
         self.args = args
+        self.dataset = args.name
         self.output_dir = output_dir or Path.cwd()
-        self.plot_max_points = plot_max_points
-        self.log_path = self.output_dir / f"{dataset}.index-log.txt"
+        self.plot_max_points = args.resource_usage_plot_max_points
+        self.log_path = self.output_dir / f"{self.dataset}.index-log.txt"
 
     def overlay(self) -> list[tuple[str, float, float]]:
         """Background regions as (label, start_s, end_s); empty if none."""

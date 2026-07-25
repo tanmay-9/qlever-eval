@@ -5,7 +5,7 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
     """Define additional oxigraph specific Qleverfile parameters"""
 
     def arg(*args, **kwargs):
-        return (args, kwargs)
+        return args, kwargs
 
     index_args = all_args["index"]
     server_args = all_args["server"]
