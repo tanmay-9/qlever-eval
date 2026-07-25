@@ -26,25 +26,37 @@ The commands share the interface and configuration conventions of QLever. For
 the underlying concepts, see the QLever documentation at
 <https://docs.qlever.dev/quickstart>.
 
-# Installation
+[//]: # (# Installation)
 
-Install the command-line tools as a python package. Using `uv`:
+[//]: # ()
+[//]: # (Install the command-line tools as a python package. Using `uv`:)
 
-```bash
-uv tool install qlever-eval
-```
+[//]: # ()
+[//]: # (```bash)
 
-Using `pipx`:
+[//]: # (uv tool install qlever-eval)
 
-```bash
-pipx install qlever-eval
-```
+[//]: # (```)
 
-Using `pip`:
+[//]: # ()
+[//]: # (Using `pipx`:)
 
-```bash
-pip install qlever-eval
-```
+[//]: # ()
+[//]: # (```bash)
+
+[//]: # (pipx install qlever-eval)
+
+[//]: # (```)
+
+[//]: # ()
+[//]: # (Using `pip`:)
+
+[//]: # ()
+[//]: # (```bash)
+
+[//]: # (pip install qlever-eval)
+
+[//]: # (```)
 
 Each supported database can run either inside a container or as a natively
 installed engine:

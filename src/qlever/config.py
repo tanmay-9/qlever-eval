@@ -222,12 +222,14 @@ class QleverConfig:
         # command. We have a dedicated class for each command. These classes
         # are defined in the modules in `qlever/commands`. In `__init__.py`
         # an object of each class is created and stored in `command_objects`.
+        supported_engines = ", ".join(engine_names.values())
+        tool_description = (
+            f"{script_name} sets up, indexes, queries, and benchmarks "
+            "graph databases in a uniform way. "
+            f"Supported engines: {supported_engines}"
+        )
         parser = argparse.ArgumentParser(
-            description=colored(
-                f"This is the {script_name} command line tool, "
-                f"it's all you need to work with {engine_name}",
-                attrs=["bold"],
-            )
+            description=colored(tool_description, attrs=["bold"])
         )
         parser.add_argument(
             "--version",

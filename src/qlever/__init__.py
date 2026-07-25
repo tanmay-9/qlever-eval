@@ -18,7 +18,7 @@ script_name = Path(sys.argv[0]).stem
 
 engine_display_names = {"qlever": "QLever"}
 engine_names = {}
-for engine_dir in Path(__file__).parent.parent.iterdir():
+for engine_dir in sorted(Path(__file__).parent.parent.iterdir()):
     if engine_dir.is_dir() and (engine_dir / "commands").exists():
         engine_name = engine_dir.name
         engine_names[engine_name] = engine_display_names.get(

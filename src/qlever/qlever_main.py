@@ -31,6 +31,9 @@ def main():
     # Execute the command.
     command_object = load_commands_for_engine(args.engine).get(args.command)
     if not command_object:
+        log.error(
+            f"Unknown command `{args.command}` for engine `{args.engine}`"
+        )
         exit(1)
     log.setLevel(log_levels[args.log_level])
     try:

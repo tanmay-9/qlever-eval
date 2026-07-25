@@ -53,17 +53,13 @@ jobs:
           ${{matrix.system}} --version
           ${{matrix.system}} pull docker.io/adfreiburg/qlever
 
-      - name: End-to-end test on the olympics dataset (${{matrix.system}})
+      - name: End-to-end test on the imdb dataset (${{matrix.system}})
         run: |
           export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p qlever-e2e && cd qlever-e2e
           qeval qlever setup-config imdb --system ${{matrix.system}}
           qeval qlever get-data
           qeval qlever index
-
-#          echo "Checking that the resource-usage log and plot were produced"
-#          test -s imdb.index.resource-usage-log.tsv
-#          test -f imdb.resource-usage-plot.png
 
           qeval qlever index-stats
           qeval qlever start
