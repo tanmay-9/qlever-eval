@@ -1,0 +1,95 @@
+name: End-to-end test for mdb
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  mdb-end-to-end-test:
+    runs-on: ubuntu-24.04
+    # MillenniumDB has no package or release binary, so it is compiled from
+    # source (see https://github.com/MillenniumDB/MillenniumDB/wiki/Setup).
+    # The build dominates the runtime, hence the generous timeout.
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install mdb (the qeval CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install MillenniumDB build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git g++ cmake libssl-dev libncurses-dev \
+            less libicu-dev
+
+      - name: Clone MillenniumDB
+        run: |
+          git clone --depth 1 https://github.com/MillenniumDB/MillenniumDB.git
+          echo "MDB_SHA=$(git -C MillenniumDB rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Cache the MillenniumDB build
+        id: mdb-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            MillenniumDB/build
+            MillenniumDB/third_party/boost_1_82
+          key: mdb-${{ runner.os }}-${{ env.MDB_SHA }}
+
+      - name: Install Boost 1.82 headers
+        if: steps.mdb-cache.outputs.cache-hit != 'true'
+        working-directory: MillenniumDB
+        run: |
+          wget -q https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz
+          tar -xf boost_1_82_0.tar.gz
+          mkdir -p third_party/boost_1_82/include
+          mv boost_1_82_0/boost third_party/boost_1_82/include
+          rm -r boost_1_82_0.tar.gz boost_1_82_0
+
+      - name: Build MillenniumDB
+        if: steps.mdb-cache.outputs.cache-hit != 'true'
+        working-directory: MillenniumDB
+        run: |
+          cmake -B build/Release -D CMAKE_BUILD_TYPE=Release
+          cmake --build build/Release/ -j "$(nproc)"
+
+      - name: Install the mdb binary on PATH
+        run: |
+          sudo install -m 0755 MillenniumDB/build/Release/bin/mdb \
+            /usr/local/bin/mdb
+          mdb help | head -3
+
+      - name: End-to-end test on the imdb dataset (native)
+        run: |
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p mdb-e2e && cd mdb-e2e
+          qeval mdb setup-config imdb --system native
+          qeval mdb get-data
+          qeval mdb index
+
+          echo "Checking that the resource-usage log and plot were produced"
+          test -s imdb.index.resource-usage-log.tsv
+          test -f imdb.resource-usage-plot.png
+
+          qeval mdb index-stats
+          qeval mdb start
+          qeval mdb status
+          qeval mdb query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval mdb stop
+          ls -lh
