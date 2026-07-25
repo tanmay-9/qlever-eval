@@ -57,13 +57,13 @@ jobs:
         run: |
           export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p qlever-e2e && cd qlever-e2e
-          qeval qlever setup-config olympics --system ${{matrix.system}}
+          qeval qlever setup-config imdb --system ${{matrix.system}}
           qeval qlever get-data
           qeval qlever index
 
 #          echo "Checking that the resource-usage log and plot were produced"
-#          test -s olympics.index.resource-usage-log.tsv || test -s olympics.resource-usage-log.tsv
-#          test -f olympics.resource-usage-plot.png
+#          test -s imdb.index.resource-usage-log.tsv
+#          test -f imdb.resource-usage-plot.png
 
           qeval qlever index-stats
           qeval qlever start
