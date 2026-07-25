@@ -7,7 +7,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("matplotlib")
 
-from qlever.resource_usage.usage_plot import (  # noqa: E402
+from qlever.resource_usage.usage_plot import (
     UsagePlot,
     build_plot_subtitle,
     compute_phase_boundaries,
@@ -230,7 +230,9 @@ def test_render_usage_plot_falls_back_to_old_tsv_name(tmp_path):
     tsv_path.write_text(
         "elapsed_s\trss\tcpu_percent\n1.0\t100\t5.0\n2.0\t200\t6.0\n"
     )
-    args = SimpleNamespace(stxxl_memory="", settings_json="{}")
+    args = SimpleNamespace(
+        stxxl_memory="", settings_json="{}", engine="qlever"
+    )
     plot_path = UsagePlot("data", args, output_dir=tmp_path).render()
     assert plot_path == tmp_path / "data.resource-usage-plot.png"
     assert plot_path.exists()

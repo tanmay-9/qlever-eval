@@ -275,8 +275,7 @@ class RebuildIndexCommand(QleverCommand):
                     f"{args.old_index_dir_basename}{old_index_date}"
                     + (".ORIGINAL" if is_first_rebuild else "")
                 )
-        if args.new_index_dir.endswith("/"):
-            args.new_index_dir = args.new_index_dir[:-1]
+        args.new_index_dir = args.new_index_dir.removesuffix("/")
 
         # Check that the new index directory either does not exist or is empty.
         # Same for the old index directory, if specified.

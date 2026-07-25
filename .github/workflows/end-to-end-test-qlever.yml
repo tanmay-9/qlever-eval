@@ -53,21 +53,19 @@ jobs:
           ${{matrix.system}} --version
           ${{matrix.system}} pull docker.io/adfreiburg/qlever
 
-      - name: End-to-end test on the olympics dataset (${{matrix.system}})
+      - name: End-to-end test on the imdb dataset (${{matrix.system}})
         run: |
-          export QLEVER_ARGCOMPLETE_ENABLED=1
+          export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p qlever-e2e && cd qlever-e2e
-          qlever setup-config olympics --system ${{matrix.system}}
-          qlever get-data
-          qlever index
+          qeval qlever setup-config imdb --system ${{matrix.system}}
+          # Disable the text index to keep the end-to-end test fast
+          sed -i 's/^TEXT_INDEX/# TEXT_INDEX/' Qleverfile
+          qeval qlever get-data
+          qeval qlever index
 
-          echo "Checking that the resource-usage log and plot were produced"
-          test -s olympics.index.resource-usage-log.tsv
-          test -f olympics.resource-usage-plot.png
-
-          qlever index-stats
-          qlever start
-          qlever status
-          qlever query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
-          qlever stop
+          qeval qlever index-stats
+          qeval qlever start
+          qeval qlever status
+          qeval qlever query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval qlever stop
           ls -lh

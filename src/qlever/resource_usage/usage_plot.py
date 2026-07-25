@@ -11,9 +11,9 @@ import numpy as np
 import psutil
 
 matplotlib.use("Agg")
-from matplotlib import pyplot as plt  # noqa: E402
+from matplotlib import pyplot as plt
 
-from qlever import engine_name
+from qlever import engine_names
 from qlever.log import log
 from qlever.util import (
     iter_permutation_phases,
@@ -326,6 +326,7 @@ class UsagePlot:
             bbox_to_anchor=(1.08, 0.5),
         )
 
+        engine_name = engine_names[self.args.engine]
         title = f"{engine_name} index build: {self.dataset}"
         subtitle = self.subtitle()
         ax_mem.set_title(f"{title}\n{subtitle}" if subtitle else title)

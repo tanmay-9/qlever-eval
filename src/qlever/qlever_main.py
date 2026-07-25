@@ -12,7 +12,7 @@ import traceback
 
 from termcolor import colored
 
-from qlever import command_objects, script_name
+from qlever import load_commands_for_engine
 from qlever.config import ConfigException, QleverConfig
 from qlever.log import log, log_levels
 
@@ -29,7 +29,12 @@ def main():
         exit(1)
 
     # Execute the command.
-    command_object = command_objects[args.command]
+    command_object = load_commands_for_engine(args.engine).get(args.command)
+    if not command_object:
+        log.error(
+            f"Unknown command `{args.command}` for engine `{args.engine}`"
+        )
+        exit(1)
     log.setLevel(log_levels[args.log_level])
     try:
         log.info("")
@@ -52,7 +57,7 @@ def main():
         )
         match_error = re.search(r"object has no attribute '(.+)'", str(e))
         match_trace = re.search(
-            rf"({script_name}/commands/.+\.py)\", line (\d+)",
+            rf"({args.engine}/commands/.+\.py)\", line (\d+)",
             traceback.format_exc(),
         )
         if isinstance(e, AttributeError) and match_error and match_trace:

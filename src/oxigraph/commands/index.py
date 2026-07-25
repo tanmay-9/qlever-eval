@@ -4,7 +4,7 @@ import shlex
 import time
 from pathlib import Path
 
-import qlever.util as util
+from qlever import util
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
@@ -40,7 +40,7 @@ def render_usage_plot(args, plot_only: bool = False) -> Path | None:
     how to get the plot at info level since the index build succeeded.
     """
     try:
-        from qoxigraph.resource_usage.usage_plot import UsagePlot
+        from oxigraph.resource_usage.usage_plot import UsagePlot
     except ImportError:
         if plot_only:
             log.error(
@@ -51,7 +51,7 @@ def render_usage_plot(args, plot_only: bool = False) -> Path | None:
             log.info(
                 "To plot the resource-usage log, install matplotlib and "
                 "numpy (`pip install qlever[plot]`), then run "
-                "`qoxigraph index --resource-usage-plot-only`."
+                "`oxigraph index --resource-usage-plot-only`."
             )
         return None
     return UsagePlot(
@@ -156,7 +156,7 @@ class IndexCommand(QleverCommand):
         if args.show:
             return True
 
-        if not util.input_files_exist(args.input_files):
+        if not util.input_files_exist(args.input_files, args.engine):
             return False
 
         # When running natively, check if the binary exists and works.

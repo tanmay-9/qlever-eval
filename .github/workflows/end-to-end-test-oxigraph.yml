@@ -1,4 +1,4 @@
-name: End-to-end test for qoxigraph
+name: End-to-end test for oxigraph
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  qoxigraph-end-to-end-test:
+  oxigraph-end-to-end-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install qoxigraph
+      - name: Install oxigraph
         run: |
           python -m pip install --upgrade pip
           pip install -e .
@@ -53,19 +53,19 @@ jobs:
 
       - name: End-to-end test on the imdb dataset (${{matrix.system}})
         run: |
-          export QLEVER_ARGCOMPLETE_ENABLED=1
-          mkdir -p qoxigraph-e2e && cd qoxigraph-e2e
-          qoxigraph setup-config imdb --system ${{matrix.system}} 
-          qoxigraph get-data
-          qoxigraph index
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p oxigraph-e2e && cd oxigraph-e2e
+          qeval oxigraph setup-config imdb --system ${{matrix.system}}
+          qeval oxigraph get-data
+          qeval oxigraph index
 
           echo "Checking that the resource-usage log and plot were produced"
           test -s imdb.index.resource-usage-log.tsv
           test -f imdb.resource-usage-plot.png
 
-          qoxigraph index-stats
-          qoxigraph start
-          qoxigraph status
-          qoxigraph query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
-          qoxigraph stop
+          qeval oxigraph index-stats
+          qeval oxigraph start
+          qeval oxigraph status
+          qeval oxigraph query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval oxigraph stop
           ls -lh

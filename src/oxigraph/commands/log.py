@@ -50,7 +50,9 @@ class LogCommand(QleverLogCommand):
 
         if not Containerize().is_running(args.system, args.server_container):
             log.error(f"No server container {args.server_container} found!\n")
-            log.info(f"Are you sure you called `{script_name} start`?")
+            log.info(
+                f"Are you sure you called `{script_name} {args.engine} start`?"
+            )
             return False
 
         try:

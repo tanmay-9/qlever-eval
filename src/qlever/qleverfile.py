@@ -72,10 +72,10 @@ class Qleverfile:
     ]
 
     @staticmethod
-    def all_arguments():
+    def all_arguments(engine: str) -> dict:
         """
-        Define all possible parameters. A value of `None` means that there is
-        no default value.
+        Define all possible parameters (`None` means no default). `engine`
+        selects which engine's extra arguments to add.
         """
 
         # Helper function that takes a list of positional arguments and a list
@@ -443,12 +443,12 @@ class Qleverfile:
         runtime_args["index_container"] = arg(
             "--index-container",
             type=str,
-            help=f"The name of the container used by `{script_name} index`",
+            help=f"The name of the container used by `{script_name} {engine} index`",
         )
         runtime_args["server_container"] = arg(
             "--server-container",
             type=str,
-            help=f"The name of the container used by `{script_name} start`",
+            help=f"The name of the container used by `{script_name} {engine} start`",
         )
         runtime_args["restart_policy"] = arg(
             "--restart-policy",
@@ -494,9 +494,9 @@ class Qleverfile:
             help="The name of the container used for `qlever ui`",
         )
 
-        engine_args_module_path = f"{script_name}.qleverfile"
+        engine_args_module_path = f"{engine}.qleverfile"
         try:
-            if script_name != "qlever":
+            if engine and engine != "qlever":
                 module = import_module(engine_args_module_path)
                 module.qleverfile_args(all_args)
         except (ImportError, AttributeError) as e:
@@ -507,7 +507,7 @@ class Qleverfile:
         return all_args
 
     @staticmethod
-    def read(qleverfile_path):
+    def read(qleverfile_path: Path, engine: str):
         """
         Read the given Qleverfile (the function assumes that it exists) and
         return a `ConfigParser` object with all the options and their values.
@@ -564,10 +564,10 @@ class Qleverfile:
             name = config["data"]["name"]
             runtime = config["runtime"]
             if "server_container" not in runtime:
-                runtime["server_container"] = f"{script_name}.server.{name}"
+                runtime["server_container"] = f"{engine}.server.{name}"
             if "index_container" not in runtime:
-                runtime["index_container"] = f"{script_name}.index.{name}"
-            if "ui_container" not in config["ui"]:
+                runtime["index_container"] = f"{engine}.index.{name}"
+            if engine == "qlever" and "ui_container" not in config["ui"]:
                 config["ui"]["ui_container"] = f"qlever.ui.{name}"
             index = config["index"]
             if "text_words_file" not in index:
@@ -590,7 +590,6 @@ class Qleverfile:
             log.warning(
                 "Could not get the hostname, using `localhost` as default"
             )
-            pass
 
         # Return the parsed Qleverfile with the added inherited values.
         return config
