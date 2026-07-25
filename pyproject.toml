@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qlever-eval"
 description = "Command-line tool from the QLever team for setting up and evaluating graph databases"
-version = "0.1.1"
+version = "0.2.0"
 authors = [
     { name = "Tanmay Garg", email = "gargt@cs.uni-freiburg.de" }
 ]
