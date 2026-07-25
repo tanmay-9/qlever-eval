@@ -460,12 +460,38 @@ class Qleverfile:
             " (default: unless-stopped)",
         )
 
+        ui_args["ui_port"] = arg(
+            "--ui-port",
+            type=int,
+            default=8176,
+            help="The port of the Qlever UI when running `qlever ui`",
+        )
         ui_args["ui_config"] = arg(
             "--ui-config",
             type=str,
             default="default",
             help="The name of the backend configuration for the QLever UI"
             " (this determines AC queries and example queries)",
+        )
+        ui_args["ui_system"] = arg(
+            "--ui-system",
+            type=str,
+            choices=Containerize.supported_systems(),
+            default="docker",
+            help="Which container system to use for `qlever ui`"
+            " (unlike for `qlever index` and `qlever start`, "
+            ' "native" is not yet supported here)',
+        )
+        ui_args["ui_image"] = arg(
+            "--ui-image",
+            type=str,
+            default="docker.io/adfreiburg/qlever-ui",
+            help="The name of the image used for `qlever ui`",
+        )
+        ui_args["ui_container"] = arg(
+            "--ui-container",
+            type=str,
+            help="The name of the container used for `qlever ui`",
         )
 
         engine_args_module_path = f"{engine}.qleverfile"
@@ -541,6 +567,8 @@ class Qleverfile:
                 runtime["server_container"] = f"{engine}.server.{name}"
             if "index_container" not in runtime:
                 runtime["index_container"] = f"{engine}.index.{name}"
+            if engine == "qlever" and "ui_container" not in config["ui"]:
+                config["ui"]["ui_container"] = f"qlever.ui.{name}"
             index = config["index"]
             if "text_words_file" not in index:
                 index["text_words_file"] = f"{name}.wordsfile.tsv"
