@@ -7,7 +7,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("matplotlib")
 
-from qlever.resource_usage.usage_plot import (  # noqa: E402
+from qlever.resource_usage.usage_plot import (
     UsagePlot,
     build_plot_subtitle,
     compute_phase_boundaries,
