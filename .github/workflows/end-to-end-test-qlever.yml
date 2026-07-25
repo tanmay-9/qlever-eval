@@ -58,6 +58,8 @@ jobs:
           export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p qlever-e2e && cd qlever-e2e
           qeval qlever setup-config imdb --system ${{matrix.system}}
+          # Disable the text index to keep the end-to-end test fast
+          sed -i 's/^TEXT_INDEX/# TEXT_INDEX/' Qleverfile
           qeval qlever get-data
           qeval qlever index
 
