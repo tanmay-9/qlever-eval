@@ -160,6 +160,25 @@ def compute_phase_boundaries(
     return phases
 
 
+def bands_from_durations(
+    durations: dict[str, float],
+) -> list[tuple[str, float, float]]:
+    """
+    Turn phase durations in seconds into (label, start_s, end_s) bands,
+    laying the phases back to back from the build start in the given
+    order. For engines whose index log reports phase durations instead
+    of timestamps. The "TOTAL time" entry is skipped.
+    """
+    bands = []
+    start_s = 0.0
+    for label, duration_s in durations.items():
+        if label == "TOTAL time":
+            continue
+        bands.append((label, start_s, start_s + duration_s))
+        start_s += duration_s
+    return bands
+
+
 def build_plot_subtitle(
     log_path: Path, stxxl_memory: str, settings_json: str
 ) -> str | None:

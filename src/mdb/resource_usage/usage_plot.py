@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from mdb.commands.index_stats import parse_index_durations
 from qlever.containerize import Containerize
-from qlever.resource_usage.usage_plot import UsagePlot as BaseUsagePlot
+from qlever.resource_usage.usage_plot import (
+    UsagePlot as BaseUsagePlot,
+)
+from qlever.resource_usage.usage_plot import (
+    bands_from_durations,
+)
 from qlever.util import run_command
 
 
@@ -9,9 +15,10 @@ class UsagePlot(BaseUsagePlot):
     """Resource-usage plot for a MillenniumDB index build."""
 
     def overlay(self) -> list[tuple[str, float, float]]:
-        """No phase shading: mdb's index log has no timestamped phase
-        markers for the base parser to locate."""
-        return []
+        """Shade each phase from the index log's "duration:" lines. The log
+        has no timestamps, so the phases are assumed to run back to back
+        from the build start."""
+        return bands_from_durations(parse_index_durations(self.log_path))
 
     def subtitle(self) -> str | None:
         """Assemble a 'version | btree' line from the index args."""
