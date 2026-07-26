@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from mdb.commands.index_stats import parse_index_durations
 from qlever.containerize import Containerize
 from qlever.resource_usage.usage_plot import (
@@ -22,19 +24,22 @@ class UsagePlot(BaseUsagePlot):
 
     def subtitle(self) -> str | None:
         """Assemble a 'version | btree' line from the index args."""
+        # MillenniumDB has no `--version`; `mdb --help` prints the version
+        # as its first line, for example "MillenniumDB v1.0.0".
         if self.args.system in Containerize.supported_systems():
             version_cmd = (
-                f"{self.args.system} run --rm {self.args.image} --version"
+                f"{self.args.system} run --rm {self.args.image} --help"
             )
         else:
-            version_cmd = f"{self.args.index_binary} --version"
+            version_cmd = f"{self.args.index_binary} --help"
         try:
-            version = run_command(version_cmd, return_output=True).strip()
+            help_output = run_command(version_cmd, return_output=True)
         except Exception:
-            version = ""
+            help_output = ""
+        version_match = re.search(r"\d+(?:\.\d+)+", help_output)
         parts = []
-        if version:
-            parts.append(version)
+        if version_match:
+            parts.append(f"{self.args.index_binary} v{version_match.group()}")
         parts.append(f"buffer-strings = {self.args.buffer_strings}")
         parts.append(f"buffer-tensors = {self.args.buffer_tensors}")
         return "   |   ".join(parts)

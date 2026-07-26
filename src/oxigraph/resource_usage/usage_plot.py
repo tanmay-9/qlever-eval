@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from oxigraph.commands.index_stats import parse_index_durations
 from qlever.containerize import Containerize
 from qlever.resource_usage.usage_plot import (
@@ -29,11 +31,12 @@ class UsagePlot(BaseUsagePlot):
         else:
             version_cmd = f"{self.args.index_binary} --version"
         try:
-            version = run_command(version_cmd, return_output=True).strip()
+            version_output = run_command(version_cmd, return_output=True)
         except Exception:
-            version = ""
+            version_output = ""
+        version_match = re.search(r"\d+(?:\.\d+)+", version_output)
         parts = []
-        if version:
-            parts.append(version)
+        if version_match:
+            parts.append(f"{self.args.index_binary} v{version_match.group()}")
         parts.append(f"read-only = {self.args.read_only}")
         return "   |   ".join(parts)
