@@ -54,10 +54,12 @@ jobs:
 
           # Check both binaries actually run. An unresolved library prints a
           # loader error instead of the banner, so this fails here rather than
-          # midway through `qeval virtuoso index`.
+          # midway through `qeval virtuoso index`. Grep the banner instead of
+          # trusting the exit code: virtuoso-t has no real `--version`, it
+          # prints the banner and its usage on stderr and exits 1.
           export LD_LIBRARY_PATH=$virtuoso/lib
-          "$virtuoso/bin/virtuoso-t" --version | grep -q 'Virtuoso Open Source'
-          "$virtuoso/bin/isql" -? | grep -q 'Interactive SQL'
+          "$virtuoso/bin/virtuoso-t" --version 2>&1 | grep -q 'Virtuoso Open Source'
+          "$virtuoso/bin/isql" -? 2>&1 | grep -q 'Interactive SQL'
 
       - name: Make sure the container runtime is available and pull the image
         if: matrix.system != 'native'
@@ -89,5 +91,8 @@ jobs:
 
       - name: Show the Virtuoso logs on failure
         if: failure()
-        working-directory: virtuoso-e2e
-        run: tail -n 100 imdb.index-log.txt imdb.server-log.txt imdb.virtuoso.ini
+        # `|| true` so that a failure before these files exist does not hide
+        # the error from the step that actually failed.
+        run: |
+          cd virtuoso-e2e || exit 0
+          tail -n 100 imdb.index-log.txt imdb.server-log.txt imdb.virtuoso.ini || true
