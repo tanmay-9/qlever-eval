@@ -85,12 +85,7 @@ class StartCommand(QleverCommand):
         )
 
     def execute(self, args) -> bool:
-        try:
-            timeout = int(args.timeout[:-1])
-        except ValueError as e:
-            log.error(f"Invalid timeout value {args.timeout}. Error: {e}")
-            return False
-
+        timeout = int(args.timeout[:-1])
         start_cmd = (
             f"{args.server_binary} server {args.name}_index "
             f"--port {args.port} --timeout {timeout} "

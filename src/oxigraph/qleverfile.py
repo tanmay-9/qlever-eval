@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from qlever.util import parse_timeout
+
 
 def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
     """Define additional oxigraph specific Qleverfile parameters"""
@@ -60,9 +62,12 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
     )
     server_args["timeout"] = arg(
         "--timeout",
-        type=str,
+        type=parse_timeout,
         default="60s",
-        help="The maximal time in seconds a query is allowed to run",
+        help=(
+            "The maximal time (in s) a query is allowed to run, for "
+            "example 60s"
+        ),
     )
     server_args["extra_args"] = arg(
         "--extra-args",

@@ -109,15 +109,7 @@ class StartCommand(QleverCommand):
         process = "serve-read-only" if args.read_only == "yes" else "serve"
         timeout_str = ""
         if timeout_supported(args, process):
-            try:
-                timeout_s = int(args.timeout[:-1])
-            except ValueError as e:
-                log.warning(
-                    f"Invalid timeout value {args.timeout}. Error: {e}"
-                )
-                log.info("Setting timeout to 60s!")
-                timeout_s = 60
-            timeout_str = f"--timeout-s {timeout_s}"
+            timeout_str = f"--timeout-s {int(args.timeout[:-1])}"
         else:
             log.info(
                 f"Ignoring the set timeout value of {args.timeout} as your "

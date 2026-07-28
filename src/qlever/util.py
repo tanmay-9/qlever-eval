@@ -674,6 +674,18 @@ def parse_memory(value: str) -> str:
     return value.upper()
 
 
+def parse_timeout(value: str) -> str:
+    """
+    Validate timeout string like '180s'.
+    Returns the string unchanged if valid, raises argparse.ArgumentTypeError otherwise.
+    """
+    if not re.match(r"^\d+s$", value, re.IGNORECASE):
+        raise argparse.ArgumentTypeError(
+            f"Invalid timeout '{value}'. Use format like 30s, 180s."
+        )
+    return value.lower()
+
+
 def container_memory_to_bytes(memory_string: str) -> int:
     """
     Parse a memory usage string from `docker stats` or `podman stats`
