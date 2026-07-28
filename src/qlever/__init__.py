@@ -16,7 +16,7 @@ def snake_to_camel(str):
 # Get the name of the script (without the path and without the extension).
 script_name = Path(sys.argv[0]).stem
 
-engine_display_names = {"qlever": "QLever"}
+engine_display_names = {"qlever": "QLever", "mdb": "MillenniumDB"}
 engine_names = {}
 for engine_dir in sorted(Path(__file__).parent.parent.iterdir()):
     if engine_dir.is_dir() and (engine_dir / "commands").exists():

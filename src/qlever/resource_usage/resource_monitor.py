@@ -119,6 +119,17 @@ class ResourceMonitor:
         self.stop_event = threading.Event()
         self.start_time = 0
 
+    @classmethod
+    def from_args(cls, args) -> ResourceMonitor:
+        """Monitor the index build configured by `args`."""
+        return cls(
+            dataset=args.name,
+            binary=args.index_binary,
+            container=args.index_container,
+            system=args.system,
+            interval=args.resource_usage_interval,
+        )
+
     def take_sample(self) -> Sample:
         """Dispatch to container or native sampling, caching the resolved process."""
         if self.system in Containerize.supported_systems():

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import subprocess
-import time
 from pathlib import Path
 
-from oxigraph.commands.stop import StopCommand
+from mdb.commands.stop import StopCommand
 from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
@@ -15,28 +13,19 @@ from qlever.util import (
     is_server_alive,
     run_command,
     server_liveness_check,
-    tail_log_file,
     wait_for_foreground_server,
     wait_until_server_ready,
 )
 
-
-def timeout_supported(args, serve_ps: str) -> bool:
-    """Check whether the oxigraph server binary supports query timeouts."""
-    help_cmd = f"{serve_ps} --help"
-    if args.system in Containerize.supported_systems():
-        help_cmd = f"{args.system} run --rm {args.image} {help_cmd}"
-    else:
-        help_cmd = f"{args.server_binary} {help_cmd}"
-    try:
-        help_output = run_command(help_cmd, return_output=True)
-        return "timeout-s" in help_output
-    except Exception as e:
-        log.warning(
-            "Could not determine if query timeouts are supported by this version "
-            f"of Oxigraph! Falling back to no timeouts. Error: {e}",
-        )
-        return False
+MDB_SPECIFIC_SERVER_ARGS = [
+    "strings_dynamic",
+    "strings_static",
+    "tensors_dynamic",
+    "tensors_static",
+    "private_buffer",
+    "versioned_buffer",
+    "unversioned_buffer",
+]
 
 
 def wrap_cmd_in_container(args, cmd: str) -> str:
@@ -50,19 +39,18 @@ def wrap_cmd_in_container(args, cmd: str) -> str:
         run_subcommand=run_subcommand,
         image_name=args.image,
         container_name=args.server_container,
-        volumes=[("$(pwd)", "/opt")],
+        volumes=[("$(pwd)", "/data")],
+        working_directory="/data",
         ports=[(args.port, args.port)],
-        working_directory="/opt",
-        use_bash=False,
     )
 
 
 class StartCommand(QleverCommand):
     """
-    Start the Oxigraph SPARQL server for an already-indexed dataset.
+    Start the MillenniumDB SPARQL server for an already-indexed dataset.
     Supports both native and containerized execution, with an option
-    to run in the foreground. Uses `serve-read-only` or `serve`
-    depending on the read_only setting.
+    to run in the foreground. Appends optional memory buffer arguments
+    (strings, tensors, versioned/unversioned) when configured.
     """
 
     def __init__(self):
@@ -70,7 +58,7 @@ class StartCommand(QleverCommand):
 
     def description(self) -> str:
         return (
-            "Start the server for Oxigraph (requires that you have built an "
+            "Start the server for MillenniumDB (requires that you have built an "
             "index before)"
         )
 
@@ -82,11 +70,12 @@ class StartCommand(QleverCommand):
             "data": ["name"],
             "server": [
                 "host_name",
-                "port",
-                "read_only",
                 "server_binary",
                 "timeout",
+                "port",
+                "threads",
                 "extra_args",
+                *MDB_SPECIFIC_SERVER_ARGS,
             ],
             "runtime": ["system", "image", "server_container"],
         }
@@ -103,32 +92,25 @@ class StartCommand(QleverCommand):
         )
 
     def execute(self, args) -> bool:
-        # Inside a container, bind to 0.0.0.0 so the port mapping is
-        # reachable from the host; natively, bind to the configured host.
-        bind = (
-            f"0.0.0.0:{args.port}"
-            if args.system in Containerize.supported_systems()
-            else f"{args.host_name}:{args.port}"
-        )
-        process = "serve-read-only" if args.read_only == "yes" else "serve"
-        timeout_str = ""
-        if timeout_supported(args, process):
-            timeout_str = f"--timeout-s {int(args.timeout[:-1])}"
-        else:
-            log.info(
-                f"Ignoring the set timeout value of {args.timeout} as your "
-                "version of Oxigraph doesn't currently support query timeouts!"
-            )
-
+        timeout = int(args.timeout[:-1])
         start_cmd = (
-            f"{process} --location {args.name}_index/ {args.extra_args} "
-            f"{timeout_str} --bind={bind}"
+            f"{args.server_binary} server {args.name}_index "
+            f"--port {args.port} --timeout {timeout} "
         )
+        if args.threads is not None:
+            start_cmd += f"--threads {args.threads} "
+        # Append optional MillenniumDB-specific buffer arguments when set.
+        for arg in MDB_SPECIFIC_SERVER_ARGS:
+            if arg_value := getattr(args, arg):
+                start_cmd += f"--{arg.replace('_', '-')} {arg_value}B "
 
+        if args.extra_args:
+            start_cmd += args.extra_args
+
+        start_cmd = f"{start_cmd} > {args.name}.server-log.txt 2>&1"
         if args.system in Containerize.supported_systems():
             start_cmd = wrap_cmd_in_container(args, start_cmd)
         else:
-            start_cmd = f"{args.server_binary} {start_cmd} > {args.name}.server-log.txt 2>&1"
             if not args.run_in_foreground:
                 start_cmd = f"nohup {start_cmd} &"
 
@@ -137,31 +119,28 @@ class StartCommand(QleverCommand):
         if args.show:
             return True
 
-        endpoint_url = f"http://{args.host_name}:{args.port}/query"
-
         # When running natively, check if the binary exists and works.
         if args.system not in Containerize.supported_systems():
             if not binary_exists(args.server_binary, "server-binary", args):
                 return False
 
-        # Check if index files (*.sst) present in index directory
-        if (
-            len([p.name for p in Path(f"{args.name}_index/").glob("*.sst")])
-            == 0
-        ):
-            log.error(f"No Oxigraph index files for {args.name} found!\n")
+        # Check if index files are present in the index directory.
+        index_dir = Path(f"{args.name}_index")
+        if not index_dir.exists() or not any(index_dir.iterdir()):
+            log.error(f"No MillenniumDB index files for {args.name} found!\n")
             log.info(
-                f"Did you call `{script_name} {args.engine} index`? If you did, check "
-                "if .sst index files are present in index directory."
+                f"Did you call `{script_name} index`? If you did, check "
+                "if index files are present in the index directory."
             )
             return False
 
-        # Check if server already alive at endpoint url from a previous run
+        # Check if server already alive at endpoint url from a previous run.
+        endpoint_url = f"http://{args.host_name}:{args.port}"
         if is_server_alive(url=endpoint_url):
-            log.error(f"Oxigraph server already running on {endpoint_url}\n")
-            log.info(
-                f"To kill the existing server, use `{script_name} {args.engine} stop`"
+            log.error(
+                f"MillenniumDB server already running on {endpoint_url}/sparql\n"
             )
+            log.info(f"To kill the existing server, use `{script_name} stop`")
             return False
 
         # Remove old log file so that tail starts clean.
@@ -174,31 +153,13 @@ class StartCommand(QleverCommand):
                 use_popen=args.run_in_foreground,
             )
         except Exception as e:
-            log.error(f"Starting the Oxigraph server failed ({e})")
+            log.error(f"Starting the MillenniumDB server failed ({e})")
             return False
-
-        # For containers, use `docker/podman logs -f` as Oxigraph doesn't
-        # support redirecting logs to a log file. A short delay ensures
-        # the container is up before attaching.
-        def attach_container_logs(_log_file: Path) -> subprocess.Popen:
-            time.sleep(2)
-            log_cmd = f"exec {args.system} logs -f {args.server_container}"
-            return subprocess.Popen(log_cmd, shell=True)
 
         # Tail the server log until the server is ready (note that the `exec`
         # is important to make sure that the tail process is killed and not
         # just the bash process).
-        in_container = args.system in Containerize.supported_systems()
-        attach = attach_container_logs if in_container else tail_log_file
-        log_name = None
-        if in_container:
-            log_name = f"the logs of container {args.server_container}"
-        log_proc = follow_server_log(
-            log_file,
-            args.run_in_foreground,
-            attach=attach,
-            log_name=log_name,
-        )
+        log_proc = follow_server_log(log_file, args.run_in_foreground)
         if log_proc is None:
             return False
         if not wait_until_server_ready(
@@ -209,9 +170,8 @@ class StartCommand(QleverCommand):
             return False
 
         log.info(
-            f"Oxigraph server webapp for {args.name} will be available at "
-            f"http://{args.host_name}:{args.port} and the sparql endpoint for "
-            f"queries is {endpoint_url} when the server is ready"
+            "MillenniumDB server sparql endpoint for queries is "
+            f"{endpoint_url}/sparql"
         )
 
         # Kill the log process
@@ -223,7 +183,8 @@ class StartCommand(QleverCommand):
         if args.run_in_foreground:
 
             def stop_container() -> None:
-                if in_container:
+                # Remove the container if the user stops the server process
+                if args.system in Containerize.supported_systems():
                     args.cmdline_regex = StopCommand.DEFAULT_REGEX
                     StopCommand().execute(args)
 

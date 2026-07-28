@@ -1,11 +1,7 @@
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
-
-# The plot extra (numpy, matplotlib) is optional, so skip this whole
-# module when it is not installed instead of failing to import.
-np = pytest.importorskip("numpy")
-pytest.importorskip("matplotlib")
 
 from qlever.resource_usage.usage_plot import (
     UsagePlot,
@@ -212,7 +208,8 @@ def test_compute_phase_boundaries_skips_incomplete_phase(tmp_path):
 
 
 def test_render_usage_plot_missing_tsv(tmp_path):
-    assert UsagePlot("missing", None, output_dir=tmp_path).render() is None
+    args = SimpleNamespace(name="missing", resource_usage_plot_max_points=500)
+    assert UsagePlot(args, output_dir=tmp_path).render() is None
 
 
 def test_render_usage_plot_header_only_tsv_renders_nothing(tmp_path):
@@ -220,7 +217,8 @@ def test_render_usage_plot_header_only_tsv_renders_nothing(tmp_path):
     # or leave a PNG behind.
     tsv_path = tmp_path / "data.index.resource-usage-log.tsv"
     tsv_path.write_text("elapsed_s\trss\tcpu_percent\n")
-    assert UsagePlot("data", None, output_dir=tmp_path).render() is None
+    args = SimpleNamespace(name="data", resource_usage_plot_max_points=500)
+    assert UsagePlot(args, output_dir=tmp_path).render() is None
     assert not (tmp_path / "data.resource-usage-plot.png").exists()
 
 
@@ -231,8 +229,12 @@ def test_render_usage_plot_falls_back_to_old_tsv_name(tmp_path):
         "elapsed_s\trss\tcpu_percent\n1.0\t100\t5.0\n2.0\t200\t6.0\n"
     )
     args = SimpleNamespace(
-        stxxl_memory="", settings_json="{}", engine="qlever"
+        name="data",
+        resource_usage_plot_max_points=500,
+        stxxl_memory="",
+        settings_json="{}",
+        engine="qlever",
     )
-    plot_path = UsagePlot("data", args, output_dir=tmp_path).render()
+    plot_path = UsagePlot(args, output_dir=tmp_path).render()
     assert plot_path == tmp_path / "data.resource-usage-plot.png"
     assert plot_path.exists()

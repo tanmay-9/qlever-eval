@@ -74,7 +74,7 @@ class StopCommand(QleverCommand):
             log.error("No matching process found")
             args.cmdline_regex = self.STATUS_COMMAND.DEFAULT_REGEX
             log.info("")
-            StatusCommand().execute(args)
+            self.STATUS_COMMAND.execute(args)
             return True
 
         # First check if container is running and if yes, stop and remove it

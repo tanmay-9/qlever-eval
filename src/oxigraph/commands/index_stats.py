@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from oxigraph.resource_usage.usage_plot import parse_logged_seconds
+import re
+from pathlib import Path
+
 from qlever import util
 from qlever.commands.index_stats import (
     IndexStatsCommand as QleverIndexStatsCommand,
@@ -13,6 +15,32 @@ from qlever.commands.index_stats import (
 )
 from qlever.log import log
 
+PHASE_LABELS = ["Load time", "Optimize time", "TOTAL time"]
+
+
+def parse_index_durations(log_file_name: str | Path) -> dict[str, float]:
+    """
+    Parse an Oxigraph index log and return the duration in seconds of each
+    phase, keyed by phase label and in log order. The durations are read
+    from the lines the index command appends to the log. Returns {} on
+    error or if no phase was logged.
+    """
+    try:
+        # The times are always near the end of the log.
+        log_text = util.run_command(
+            f"tail {log_file_name}", return_output=True
+        )
+    except Exception as e:
+        log.error(f"Problem reading index log file {log_file_name}: {e}")
+        return {}
+
+    durations = {}
+    for label in PHASE_LABELS:
+        match = re.search(rf"{re.escape(label)}:\s*(\d+)s", log_text)
+        if match:
+            durations[label] = float(match.group(1))
+    return durations
+
 
 class IndexStatsCommand(QleverIndexStatsCommand):
     """
@@ -24,25 +52,11 @@ class IndexStatsCommand(QleverIndexStatsCommand):
     def execute_time(
         self, args, log_file_name: str
     ) -> dict[str, tuple[float | None, str]]:
-        """Parse index build times from the index log file."""
-        try:
-            # Read the last few lines of the log file (the times are
-            # always near the end).
-            log_text = util.run_command(
-                f"tail {log_file_name}", return_output=True
-            )
-        except Exception as e:
-            log.error(f"Problem reading index log file {log_file_name}: {e}")
-            return {}
-
-        phases = ["Load time", "Optimize time", "TOTAL time"]
-
-        raw_seconds = {}
-        for name in phases:
-            seconds = parse_logged_seconds(log_text, f"{name}:")
-            if seconds is not None:
-                raw_seconds[name] = seconds
-
+        """
+        Show the duration of each phase found in the Oxigraph index log,
+        all converted to a time unit chosen for the total time.
+        """
+        raw_seconds = parse_index_durations(log_file_name)
         if not raw_seconds:
             return {}
 
@@ -51,10 +65,10 @@ class IndexStatsCommand(QleverIndexStatsCommand):
         time_unit = get_time_unit(args.time_unit, total_s)
         unit_factor = get_time_unit_factor(time_unit)
 
-        stats = {}
-        for name in phases:
-            if name in raw_seconds:
-                stats[name] = (raw_seconds[name] / unit_factor, time_unit)
+        stats = {
+            name: (seconds / unit_factor, time_unit)
+            for name, seconds in raw_seconds.items()
+        }
 
         # If there was no optimize step, Load and TOTAL are identical
         if "Optimize time" not in stats:

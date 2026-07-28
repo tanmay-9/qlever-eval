@@ -66,6 +66,6 @@ jobs:
           qeval qlever index-stats
           qeval qlever start
           qeval qlever status
-          qeval qlever query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval qlever query
           qeval qlever stop
           ls -lh

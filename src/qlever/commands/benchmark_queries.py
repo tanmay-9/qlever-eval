@@ -868,10 +868,7 @@ class BenchmarkQueriesCommand(QleverCommand):
         width_query_name_half = args.width_query_name // 2
         width_query_name = 2 * width_query_name_half + 1
 
-        try:
-            timeout = int(args.timeout[:-1])
-        except ValueError:
-            timeout = None
+        timeout = int(args.timeout[:-1])
 
         benchmark_name, benchmark_description = resolve_benchmark_metadata(
             args.engine,
