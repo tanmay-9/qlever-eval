@@ -72,9 +72,9 @@ class IndexCommand(QleverCommand):
             action="store_true",
             default=False,
             help="Only render the resource-usage plot from the existing "
-            "`<name>.index.resource-usage-log.tsv`; do not build the index. Use "
-            "after installing the plotting libraries, or to re-render with "
-            "a different `--resource-usage-plot-max-points`",
+            "`<name>.index.resource-usage-log.tsv`; do not build the index. "
+            "Use to re-render with a different "
+            "`--resource-usage-plot-max-points`",
         )
 
     # Exception for invalid JSON.

@@ -69,13 +69,17 @@ class IndexStatsCommand(QleverIndexStatsCommand):
         self, args, log_file_name: str
     ) -> dict[str, tuple[float | None, str]]:
         """
-        Show the duration of each phase found in the MillenniumDB index
-        log, each converted to a time unit chosen for that phase.
+        Show the duration of each phase found in the MillenniumDB index log.
         """
         stats = {}
-        for label, value_s in parse_index_durations(log_file_name).items():
-            time_unit = get_time_unit(args.time_unit, value_s)
-            unit_factor = get_time_unit_factor(time_unit)
+        index_durations = parse_index_durations(log_file_name)
+        if not index_durations:
+            return {}
+        time_unit = get_time_unit(
+            args.time_unit, max(index_durations.values())
+        )
+        unit_factor = get_time_unit_factor(time_unit)
+        for label, value_s in index_durations.items():
             stats[label] = (value_s / unit_factor, time_unit)
         return stats
 
