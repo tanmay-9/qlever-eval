@@ -11,7 +11,7 @@ import socket
 import string
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -779,6 +779,93 @@ def tail_log_file(
         waited += 0.1
     tail_cmd = f"exec tail -n +1 -f {log_file}"
     return subprocess.Popen(tail_cmd, shell=True)
+
+
+def follow_server_log(
+    log_file: Path,
+    run_in_foreground: bool,
+    attach: Callable[[Path], subprocess.Popen | None] = tail_log_file,
+    log_name: str | None = None,
+) -> subprocess.Popen | None:
+    """
+    Start following the server log, so that the user sees the server
+    output until it is ready. The old log file should be deleted before
+    the server is started. Pass `attach` for engines that cannot write
+    the server log to a file, and `log_name` to call the log something
+    else than `log_file` in the message shown to the user.
+
+    Returns the process that follows the log, or None if the log file
+    was not created.
+    """
+    log_name = log_name or str(log_file)
+    if run_in_foreground:
+        log.info(
+            f"Follow {log_name} as long as the server is running "
+            "(Ctrl-C stops the server)"
+        )
+    else:
+        log.info(
+            f"Follow {log_name} until the server is ready "
+            "(Ctrl-C stops following the log, but NOT the server)"
+        )
+    log.info("")
+    return attach(log_file)
+
+
+def server_liveness_check(
+    args, process: subprocess.Popen | None
+) -> Callable[[], bool]:
+    """
+    Build a check that tells whether the server started by `process` is
+    still running. With `nohup`, we have no handle on the server
+    process, so the check always says yes.
+    """
+    from qlever.containerize import Containerize
+
+    if args.system in Containerize.supported_systems():
+        return lambda: Containerize.is_running(
+            args.system, args.server_container
+        )
+    if args.run_in_foreground:
+        return lambda: process.poll() is None
+    return lambda: True
+
+
+def wait_until_server_ready(
+    is_alive: Callable[[], bool],
+    is_still_running: Callable[[], bool],
+    poll_interval_s: float = 1.0,
+) -> bool:
+    """
+    Poll until the server answers. Returns False if the server process
+    exited before it became ready (e.g. because of a corrupt index).
+    """
+    while not is_alive():
+        if not is_still_running():
+            log.error("Server process exited before becoming ready")
+            return False
+        time.sleep(poll_interval_s)
+    return True
+
+
+def wait_for_foreground_server(
+    process: subprocess.Popen,
+    log_proc: subprocess.Popen,
+    on_interrupt: Callable[[], None],
+) -> None:
+    """
+    Wait until the server started in the foreground is stopped. On
+    Ctrl-C, terminate it and call `on_interrupt` for engine-specific
+    cleanup (such as removing the server container).
+    """
+    try:
+        process.wait()
+    except KeyboardInterrupt:
+        log.warning("\rCtrl-C pressed, stopping the server ...")
+        log.info("")
+        process.terminate()
+        on_interrupt()
+    log_proc.terminate()
 
 
 def parse_git_hash(log_path: Path) -> str | None:

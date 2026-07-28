@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
-import qlever.util as util
 from mdb.commands.stop import StopCommand
 from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
+from qlever.util import (
+    binary_exists,
+    follow_server_log,
+    is_server_alive,
+    run_command,
+    server_liveness_check,
+    wait_for_foreground_server,
+    wait_until_server_ready,
+)
 
 MDB_SPECIFIC_SERVER_ARGS = [
     "strings_dynamic",
@@ -114,9 +121,7 @@ class StartCommand(QleverCommand):
 
         # When running natively, check if the binary exists and works.
         if args.system not in Containerize.supported_systems():
-            if not util.binary_exists(
-                args.server_binary, "server-binary", args
-            ):
+            if not binary_exists(args.server_binary, "server-binary", args):
                 return False
 
         # Check if index files are present in the index directory.
@@ -131,7 +136,7 @@ class StartCommand(QleverCommand):
 
         # Check if server already alive at endpoint url from a previous run.
         endpoint_url = f"http://{args.host_name}:{args.port}"
-        if util.is_server_alive(url=endpoint_url):
+        if is_server_alive(url=endpoint_url):
             log.error(
                 f"MillenniumDB server already running on {endpoint_url}/sparql\n"
             )
@@ -143,7 +148,7 @@ class StartCommand(QleverCommand):
         log_file.unlink(missing_ok=True)
 
         try:
-            process = util.run_command(
+            process = run_command(
                 start_cmd,
                 use_popen=args.run_in_foreground,
             )
@@ -154,22 +159,15 @@ class StartCommand(QleverCommand):
         # Tail the server log until the server is ready (note that the `exec`
         # is important to make sure that the tail process is killed and not
         # just the bash process).
-        if args.run_in_foreground:
-            log.info(
-                "Follow the server logs as long as the server is"
-                " running (Ctrl-C stops the server)"
-            )
-        else:
-            log.info(
-                "Follow the server logs until the server is ready"
-                " (Ctrl-C stops following the log, but NOT the server)"
-            )
-        log.info("")
-        log_proc = util.tail_log_file(log_file)
+        log_proc = follow_server_log(log_file, args.run_in_foreground)
         if log_proc is None:
             return False
-        while not util.is_server_alive(endpoint_url):
-            time.sleep(1)
+        if not wait_until_server_ready(
+            lambda: is_server_alive(endpoint_url),
+            server_liveness_check(args, process),
+        ):
+            log_proc.terminate()
+            return False
 
         log.info(
             "MillenniumDB server sparql endpoint for queries is "
@@ -183,14 +181,13 @@ class StartCommand(QleverCommand):
         # With `--run-in-foreground`, wait until the server is stopped.
         # On Ctrl-C, terminate the process and clean up the container.
         if args.run_in_foreground:
-            try:
-                process.wait()
-            except KeyboardInterrupt:
-                process.terminate()
+
+            def stop_container() -> None:
                 # Remove the container if the user stops the server process
                 if args.system in Containerize.supported_systems():
                     args.cmdline_regex = StopCommand.DEFAULT_REGEX
                     StopCommand().execute(args)
-            log_proc.terminate()
+
+            wait_for_foreground_server(process, log_proc, stop_container)
 
         return True

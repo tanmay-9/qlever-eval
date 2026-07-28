@@ -11,9 +11,13 @@ from qlever.containerize import Containerize
 from qlever.log import log
 from qlever.util import (
     binary_exists,
+    follow_server_log,
     is_server_alive,
     run_command,
+    server_liveness_check,
     tail_log_file,
+    wait_for_foreground_server,
+    wait_until_server_ready,
 )
 
 
@@ -173,33 +177,36 @@ class StartCommand(QleverCommand):
             log.error(f"Starting the Oxigraph server failed ({e})")
             return False
 
-        # Tail the server log until the server is ready (note that the `exec`
-        # is important to make sure that the tail process is killed and not
-        # just the bash process).
-        if args.run_in_foreground:
-            log.info(
-                "Follow the server logs as long as the server is"
-                " running (Ctrl-C stops the server)"
-            )
-        else:
-            log.info(
-                "Follow the server logs until the server is ready"
-                " (Ctrl-C stops following the log, but NOT the server)"
-            )
-        log.info("")
         # For containers, use `docker/podman logs -f` as Oxigraph doesn't
         # support redirecting logs to a log file. A short delay ensures
         # the container is up before attaching.
-        if args.system in Containerize.supported_systems():
+        def attach_container_logs(_log_file: Path) -> subprocess.Popen:
             time.sleep(2)
             log_cmd = f"exec {args.system} logs -f {args.server_container}"
-            log_proc = subprocess.Popen(log_cmd, shell=True)
-        else:
-            log_proc = tail_log_file(log_file)
-            if log_proc is None:
-                return False
-        while not is_server_alive(endpoint_url):
-            time.sleep(1)
+            return subprocess.Popen(log_cmd, shell=True)
+
+        # Tail the server log until the server is ready (note that the `exec`
+        # is important to make sure that the tail process is killed and not
+        # just the bash process).
+        in_container = args.system in Containerize.supported_systems()
+        attach = attach_container_logs if in_container else tail_log_file
+        log_name = None
+        if in_container:
+            log_name = f"the logs of container {args.server_container}"
+        log_proc = follow_server_log(
+            log_file,
+            args.run_in_foreground,
+            attach=attach,
+            log_name=log_name,
+        )
+        if log_proc is None:
+            return False
+        if not wait_until_server_ready(
+            lambda: is_server_alive(endpoint_url),
+            server_liveness_check(args, process),
+        ):
+            log_proc.terminate()
+            return False
 
         log.info(
             f"Oxigraph server webapp for {args.name} will be available at "
@@ -214,13 +221,12 @@ class StartCommand(QleverCommand):
         # With `--run-in-foreground`, wait until the server is stopped.
         # On Ctrl-C, terminate the process and clean up the container.
         if args.run_in_foreground:
-            try:
-                process.wait()
-            except KeyboardInterrupt:
-                process.terminate()
-                if args.system in Containerize.supported_systems():
+
+            def stop_container() -> None:
+                if in_container:
                     args.cmdline_regex = StopCommand.DEFAULT_REGEX
                     StopCommand().execute(args)
-            log_proc.terminate()
+
+            wait_for_foreground_server(process, log_proc, stop_container)
 
         return True
