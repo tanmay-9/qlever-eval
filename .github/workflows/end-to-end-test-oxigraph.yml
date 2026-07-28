@@ -66,6 +66,6 @@ jobs:
           qeval oxigraph index-stats
           qeval oxigraph start
           qeval oxigraph status
-          qeval oxigraph query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval oxigraph query
           qeval oxigraph stop
           ls -lh

@@ -95,6 +95,6 @@ jobs:
           qeval mdb index-stats
           qeval mdb start
           qeval mdb status
-          qeval mdb query "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+          qeval mdb query
           qeval mdb stop
           ls -lh
