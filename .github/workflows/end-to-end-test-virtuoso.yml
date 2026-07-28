@@ -1,0 +1,93 @@
+name: End-to-end test for virtuoso
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  virtuoso-end-to-end-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [native, docker, podman]
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install virtuoso (the qeval CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install the latest Virtuoso release binaries on PATH
+        if: matrix.system == 'native'
+        run: |
+          # The tarball unpacks to virtuoso-opensource/{bin,lib,vad,...}. Keep
+          # that tree together and only add its bin/ to PATH; the binaries
+          # need the rest of it next to them.
+          url=$(curl -sL https://api.github.com/repos/openlink/virtuoso-opensource/releases/latest \
+            | grep -oE 'https://[^"]+x86_64-generic_glibc25-linux-gnu\.tar\.gz' | head -1)
+          echo "Downloading Virtuoso binaries from $url"
+          curl -sL "$url" | tar -xz -C "$HOME"
+          virtuoso=$HOME/virtuoso-opensource
+          echo "$virtuoso/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$virtuoso/lib" >> "$GITHUB_ENV"
+
+          # `isql` wants libncurses.so.5 and Ubuntu 24.04 only ships 6, which
+          # works for what isql uses. `virtuoso-t` needs no ncurses at all.
+          ln -s /usr/lib/x86_64-linux-gnu/libncurses.so.6 \
+            "$virtuoso/lib/libncurses.so.5"
+
+          # Check both binaries actually run. An unresolved library prints a
+          # loader error instead of the banner, so this fails here rather than
+          # midway through `qeval virtuoso index`.
+          export LD_LIBRARY_PATH=$virtuoso/lib
+          "$virtuoso/bin/virtuoso-t" --version | grep -q 'Virtuoso Open Source'
+          "$virtuoso/bin/isql" -? | grep -q 'Interactive SQL'
+
+      - name: Make sure the container runtime is available and pull the image
+        if: matrix.system != 'native'
+        run: |
+          command -v ${{matrix.system}} || (sudo apt-get update && sudo apt-get install -y ${{matrix.system}})
+          ${{matrix.system}} --version
+          ${{matrix.system}} pull docker.io/openlink/virtuoso-opensource-7:latest
+
+      - name: End-to-end test on the imdb dataset (${{matrix.system}})
+        run: |
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p virtuoso-e2e && cd virtuoso-e2e
+          qeval virtuoso setup-config imdb --system ${{matrix.system}}
+          qeval virtuoso get-data
+          qeval virtuoso index
+
+          # Virtuoso does not render a resource-usage plot yet, so unlike the
+          # other engines only the log is checked here.
+          echo "Checking that the resource-usage log and the index db exist"
+          test -s imdb.index.resource-usage-log.tsv
+          test -s virtuoso.db
+
+          qeval virtuoso index-stats
+          qeval virtuoso start
+          qeval virtuoso status
+          qeval virtuoso query
+          qeval virtuoso stop
+          ls -lh
+
+      - name: Show the Virtuoso logs on failure
+        if: failure()
+        working-directory: virtuoso-e2e
+        run: tail -n 100 imdb.index-log.txt imdb.server-log.txt imdb.virtuoso.ini
