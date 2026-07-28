@@ -101,7 +101,7 @@ class StartCommand(QleverCommand):
             start_cmd += f"--threads {args.threads} "
         # Append optional MillenniumDB-specific buffer arguments when set.
         for arg in MDB_SPECIFIC_SERVER_ARGS:
-            if (arg_value := getattr(args, arg)) is not None and arg_value:
+            if arg_value := getattr(args, arg):
                 start_cmd += f"--{arg.replace('_', '-')} {arg_value}B "
 
         if args.extra_args:

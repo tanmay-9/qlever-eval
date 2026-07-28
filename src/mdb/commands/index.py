@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import qlever.util as util
 from mdb.resource_usage.usage_plot import UsagePlot
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
 from qlever.resource_usage.resource_monitor import ResourceMonitor
+from qlever.util import (
+    binary_exists,
+    build_image,
+    get_container_image_id,
+    input_files_exist,
+    run_command,
+)
 
 
 def wrap_cmd_in_container(args, cmd: str) -> str:
@@ -123,13 +129,14 @@ class IndexCommand(QleverCommand):
 
         # For container execution, build the Docker image from the
         # MillenniumDB repository if it is not already present.
-        image_id = build_cmd = ""
+        image_id = ""
+        build_cmd = ""
         if args.system in Containerize.supported_systems():
             index_cmd = wrap_cmd_in_container(args, index_cmd)
             dockerfile_url = "https://github.com/MillenniumDB/MillenniumDB.git"
             build_cmd = f"{system} build {dockerfile_url} -t {args.image}"
 
-            image_id = util.get_container_image_id(system, args.image)
+            image_id = get_container_image_id(system, args.image)
 
             cmd_to_show = (
                 f"{build_cmd}\n\n{index_cmd}"
@@ -145,7 +152,7 @@ class IndexCommand(QleverCommand):
             return True
 
         # Check if all of the input files exist.
-        if not util.input_files_exist(input_files, args.engine):
+        if not input_files_exist(input_files, args.engine):
             return False
 
         if args.system in Containerize.supported_systems():
@@ -157,7 +164,7 @@ class IndexCommand(QleverCommand):
                 return False
         else:
             # When running natively, check if the binary exists and works.
-            if not util.binary_exists(args.index_binary, "index-binary", args):
+            if not binary_exists(args.index_binary, "index-binary", args):
                 return False
 
         # Abort if a previous index already exists. Any files in the
@@ -174,9 +181,7 @@ class IndexCommand(QleverCommand):
         # Build the docker image if not found on the system.
         if args.system in Containerize.supported_systems():
             if not image_id or args.rebuild_image:
-                build_successful = util.build_image(
-                    build_cmd, system, args.image
-                )
+                build_successful = build_image(build_cmd, system, args.image)
                 if not build_successful:
                     return False
             else:
@@ -184,14 +189,8 @@ class IndexCommand(QleverCommand):
 
         # Run the index command.
         try:
-            with ResourceMonitor(
-                dataset=args.name,
-                binary=args.index_binary,
-                container=args.index_container,
-                system=args.system,
-                interval=args.resource_usage_interval,
-            ):
-                util.run_command(index_cmd, show_output=True)
+            with ResourceMonitor.from_args(args):
+                run_command(index_cmd, show_output=True)
         except Exception as e:
             log.error(f"Building the index failed: {e}")
             return False

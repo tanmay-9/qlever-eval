@@ -16,6 +16,11 @@ jobs:
     # MillenniumDB has no package or release binary, so it is compiled from
     # source (see https://github.com/MillenniumDB/MillenniumDB/wiki/Setup).
     # The build dominates the runtime, hence the generous timeout.
+    #
+    # Only the native path is tested. There is no published MillenniumDB
+    # image, so the containerized path builds one from the upstream
+    # Dockerfile, which compiles the same sources again and cannot reuse
+    # the build cache below.
     timeout-minutes: 60
 
     steps:

@@ -71,7 +71,6 @@ class IndexStatsCommand(QleverIndexStatsCommand):
         """
         Show the duration of each phase found in the MillenniumDB index log.
         """
-        stats = {}
         index_durations = parse_index_durations(log_file_name)
         if not index_durations:
             return {}
@@ -79,9 +78,10 @@ class IndexStatsCommand(QleverIndexStatsCommand):
             args.time_unit, max(index_durations.values())
         )
         unit_factor = get_time_unit_factor(time_unit)
-        for label, value_s in index_durations.items():
-            stats[label] = (value_s / unit_factor, time_unit)
-        return stats
+        return {
+            label: (value_s / unit_factor, time_unit)
+            for label, value_s in index_durations.items()
+        }
 
     def execute_space(self, args) -> dict[str, tuple[float, str]]:
         """

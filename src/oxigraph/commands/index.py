@@ -165,13 +165,7 @@ class IndexCommand(QleverCommand):
         # the time externally.
         #
         log_file_name = f"{args.name}.index-log.txt"
-        with ResourceMonitor(
-            dataset=args.name,
-            binary=args.index_binary,
-            container=args.index_container,
-            system=args.system,
-            interval=args.resource_usage_interval,
-        ):
+        with ResourceMonitor.from_args(args):
             try:
                 load_start = time.time()
                 util.run_command(index_cmd, show_output=True, show_stderr=True)
