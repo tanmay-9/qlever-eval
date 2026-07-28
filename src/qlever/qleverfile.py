@@ -560,6 +560,8 @@ class Qleverfile:
                 config[section] = {}
 
         # Add default values that are based on other values.
+        index = config["index"]
+        server = config["server"]
         if "name" in config["data"]:
             name = config["data"]["name"]
             runtime = config["runtime"]
@@ -569,12 +571,10 @@ class Qleverfile:
                 runtime["index_container"] = f"{engine}.index.{name}"
             if engine == "qlever" and "ui_container" not in config["ui"]:
                 config["ui"]["ui_container"] = f"qlever.ui.{name}"
-            index = config["index"]
             if "text_words_file" not in index:
                 index["text_words_file"] = f"{name}.wordsfile.tsv"
             if "text_docs_file" not in index:
                 index["text_docs_file"] = f"{name}.docsfile.tsv"
-            server = config["server"]
         if index.get("text_index", "none") != "none":
             server["use_text_index"] = "yes"
         if index.get("only_pso_and_pos_permutations", "false") == "true":
