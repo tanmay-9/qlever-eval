@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
+from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.commands.cache_stats import CacheStatsCommand
 from qlever.commands.settings import SettingsCommand
@@ -147,7 +148,7 @@ class StartCommand(QleverCommand):
     def description(self) -> str:
         return (
             "Start the QLever server (requires that you have built "
-            "an index with `qlever index` before)"
+            f"an index with `{script_name} qlever index` before)"
         )
 
     def should_have_qleverfile(self) -> bool:
@@ -267,8 +268,9 @@ class StartCommand(QleverCommand):
             log.error(f"QLever server already running on {args.endpoint_url}")
             log.info("")
             log.info(
-                "To kill the existing server, use `qlever stop` "
-                "or `qlever start` with option "
+                f"To kill the existing server, use "
+                f"`{script_name} {args.engine} stop` "
+                f"or `{script_name} {args.engine} start` with option "
                 "--kill-existing-with-same-port`"
             )
 

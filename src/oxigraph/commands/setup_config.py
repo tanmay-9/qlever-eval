@@ -59,7 +59,7 @@ class SetupConfigCommand(QleverSetupConfigCommand):
             return True
 
         # If there is already a Qleverfile in the current directory, exit.
-        if self.check_qleverfile_exists():
+        if self.check_qleverfile_exists(args):
             return False
 
         qleverfile_path = Path("Qleverfile")

@@ -372,7 +372,8 @@ class Qleverfile:
             choices=["yes", "no"],
             default="yes",
             help="Whether to use the patterns precomputed during the index "
-            "build (see `qlever index --help` for their utility)",
+            f"build (see `{script_name} {engine} index --help` for their "
+            "utility)",
         )
         server_args["metrics_log"] = arg(
             "--metrics-log",
@@ -399,7 +400,7 @@ class Qleverfile:
             choices=["yes", "no"],
             default="no",
             help="Whether to use the text index (requires that one was "
-            "built, see `qlever index`)",
+            f"built, see `{script_name} {engine} index`)",
         )
         server_args["preload_materialized_views"] = arg(
             "-l",
@@ -413,8 +414,9 @@ class Qleverfile:
             "--warmup-cmd",
             type=str,
             help="Command executed after the server has started "
-            " (executed as part of `qlever start` unless "
-            " `--no-warmup` is specified, or with `qlever warmup`)",
+            f" (executed as part of `{script_name} {engine} start` unless "
+            f" `--no-warmup` is specified, or with "
+            f"`{script_name} {engine} warmup`)",
         )
         server_args["enable_metrics"] = arg(
             "--enable-metrics",
@@ -464,7 +466,8 @@ class Qleverfile:
             "--ui-port",
             type=int,
             default=8176,
-            help="The port of the Qlever UI when running `qlever ui`",
+            help="The port of the QLever UI when running "
+            f"`{script_name} {engine} ui`",
         )
         ui_args["ui_config"] = arg(
             "--ui-config",
@@ -478,20 +481,22 @@ class Qleverfile:
             type=str,
             choices=Containerize.supported_systems(),
             default="docker",
-            help="Which container system to use for `qlever ui`"
-            " (unlike for `qlever index` and `qlever start`, "
-            ' "native" is not yet supported here)',
+            help=f"Which container system to use for `{script_name} {engine} ui`"
+            f" (unlike for `{script_name} {engine} index` and "
+            f"`{script_name} {engine} start`, "
+            '"native" is not yet supported here)',
         )
         ui_args["ui_image"] = arg(
             "--ui-image",
             type=str,
             default="docker.io/adfreiburg/qlever-ui",
-            help="The name of the image used for `qlever ui`",
+            help=f"The name of the image used for `{script_name} {engine} ui`",
         )
         ui_args["ui_container"] = arg(
             "--ui-container",
             type=str,
-            help="The name of the container used for `qlever ui`",
+            help="The name of the container used for "
+            f"`{script_name} {engine} ui`",
         )
 
         engine_args_module_path = f"{engine}.qleverfile"

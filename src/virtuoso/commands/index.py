@@ -72,7 +72,7 @@ def log_virtuoso_ini_changes(
         log.info("")
 
 
-def virtuoso_ini_help_msg(script_name: str, args, ini_files: list[str]) -> str:
+def virtuoso_ini_help_msg(args, ini_files: list[str]) -> str:
     """
     Return a help message depending on how many .ini files are present in the
     current directory: none (suggest setup-config), exactly one (will be
@@ -80,7 +80,7 @@ def virtuoso_ini_help_msg(script_name: str, args, ini_files: list[str]) -> str:
     """
     ini_msg = (
         "No .ini configfile present. Did you call "
-        f"`{script_name} setup-config`?"
+        f"`{script_name} {args.engine} setup-config`?"
     )
     if len(ini_files) == 1:
         ini_msg = (
@@ -188,6 +188,7 @@ class IndexCommand(QleverCommand):
                 "isql_port",
                 "num_parallel_loaders",
                 "memory_for_buffers",
+                "resource_usage_interval",
             ],
             "server": ["host_name", "port", "server_binary"],
             "runtime": ["system", "image", "index_container"],
@@ -241,7 +242,7 @@ class IndexCommand(QleverCommand):
         if not Path(f"{args.name}.virtuoso.ini").exists():
             self.show(
                 f"{args.name}.virtuoso.ini configfile not found in the current "
-                f"directory! {virtuoso_ini_help_msg(script_name, args, ini_files)}"
+                f"directory! {virtuoso_ini_help_msg(args, ini_files)}"
             )
 
         virtuoso_ini_config_dict = config_dict_for_update_ini(args)
@@ -313,7 +314,7 @@ class IndexCommand(QleverCommand):
             else:
                 log.error(
                     f"{args.name}.virtuoso.ini configfile not found in the current "
-                    f"directory! {virtuoso_ini_help_msg(script_name, args, ini_files)}"
+                    f"directory! {virtuoso_ini_help_msg(args, ini_files)}"
                 )
                 return False
 
@@ -381,6 +382,7 @@ class IndexCommand(QleverCommand):
                     binary=args.server_binary,
                     container=args.index_container,
                     system=args.system,
+                    interval=args.resource_usage_interval,
                     parent_pid=virtuoso_pid,
                 )
                 if args.system in Containerize.supported_systems()

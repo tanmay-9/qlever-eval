@@ -6,6 +6,7 @@ import re
 import shlex
 from pathlib import Path
 
+from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
@@ -237,7 +238,10 @@ class IndexCommand(QleverCommand):
                 "multiple input streams)"
             )
             log.info("")
-            log.info("See `qlever index --help` for more information")
+            log.info(
+                f"See `{script_name} {args.engine} index --help` for more "
+                "information"
+            )
             return False
 
         # Add remaining options.

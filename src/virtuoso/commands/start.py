@@ -128,7 +128,7 @@ class StartCommand(QleverCommand):
             self.show(
                 f"{args.name}.virtuoso.ini configfile "
                 "not found in the current directory! "
-                f"{virtuoso_ini_help_msg(script_name, args, ini_files)}"
+                f"{virtuoso_ini_help_msg(args, ini_files)}"
             )
 
         virtuoso_ini_config_dict = config_dict_for_update_ini(args)
@@ -156,14 +156,18 @@ class StartCommand(QleverCommand):
         if not Path("virtuoso.db").exists():
             log.error(f"No Virtuoso index db for {args.name} found!\n")
             log.info(
-                f"Did you call `{script_name} index`? If you did, check "
-                "if virtuoso.db is present in current working directory."
+                f"Did you call `{script_name} {args.engine} index`? If you "
+                "did, check if virtuoso.db is present in current working "
+                "directory."
             )
             return False
 
         if is_server_alive(url=endpoint_url):
             log.error(f"Virtuoso server already running on {endpoint_url}\n")
-            log.info(f"To kill the existing server, use `{script_name} stop`")
+            log.info(
+                "To kill the existing server, use "
+                f"`{script_name} {args.engine} stop`"
+            )
             return False
 
         # Rename the virtuoso.ini file to {args.name}.virtuoso.ini if needed
@@ -177,7 +181,7 @@ class StartCommand(QleverCommand):
                 log.error(
                     f"{args.name}.virtuoso.ini configfile "
                     "not found in the current directory! "
-                    f"{virtuoso_ini_help_msg(script_name, args, ini_files)}"
+                    f"{virtuoso_ini_help_msg(args, ini_files)}"
                 )
                 return False
 

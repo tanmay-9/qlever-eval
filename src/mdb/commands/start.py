@@ -129,8 +129,8 @@ class StartCommand(QleverCommand):
         if not index_dir.exists() or not any(index_dir.iterdir()):
             log.error(f"No MillenniumDB index files for {args.name} found!\n")
             log.info(
-                f"Did you call `{script_name} index`? If you did, check "
-                "if index files are present in the index directory."
+                f"Did you call `{script_name} {args.engine} index`? If you "
+                "did, check if index files are present in the index directory."
             )
             return False
 
@@ -140,7 +140,10 @@ class StartCommand(QleverCommand):
             log.error(
                 f"MillenniumDB server already running on {endpoint_url}/sparql\n"
             )
-            log.info(f"To kill the existing server, use `{script_name} stop`")
+            log.info(
+                "To kill the existing server, use "
+                f"`{script_name} {args.engine} stop`"
+            )
             return False
 
         # Remove old log file so that tail starts clean.

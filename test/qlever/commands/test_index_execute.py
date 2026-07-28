@@ -4,6 +4,7 @@ import shlex
 import unittest
 from unittest.mock import MagicMock, call, patch
 
+from qlever import script_name
 from qlever.commands.index import IndexCommand
 
 
@@ -335,6 +336,7 @@ class TestIndexCommand(unittest.TestCase):
         args.resource_usage_plot_only = False
         args.cat_input_files = True
         args.multi_input_json = True
+        args.engine = "qlever"
 
         # Instantiate IndexCommand and execute the function
         result = IndexCommand().execute(args)
@@ -344,7 +346,9 @@ class TestIndexCommand(unittest.TestCase):
             "single input stream) or `MULTI_INPUT_JSON` (for "
             "multiple input streams)"
         )
-        log_msg = "See `qlever index --help` for more information"
+        log_msg = (
+            f"See `{script_name} qlever index --help` for more information"
+        )
         # Asserts
         # Verify that the error message was logged
         mock_log.error.assert_called_once_with(error_msg)

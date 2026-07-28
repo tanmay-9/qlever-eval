@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
@@ -72,14 +73,15 @@ class UiCommand(QleverCommand):
         if qlever_is_running_in_container:
             log.error(
                 "The environment variable `QLEVER_OVERRIDE_DISABLE_UI` is set, "
-                "therefore `qlever ui` is not available (it should not be called "
-                "from inside a container)"
+                f"therefore `{script_name} {args.engine} ui` is not available "
+                "(it should not be called from inside a container)"
             )
             log.info("")
             if not args.show:
                 log.info(
                     "For your information, showing the commands that are "
-                    "executed when `qlever ui` is available:"
+                    f"executed when `{script_name} {args.engine} ui` is "
+                    "available:"
                 )
                 log.info("")
 
@@ -238,6 +240,6 @@ class UiCommand(QleverCommand):
         )
         log.info(
             f"You can modify the config file at `{ui_config_file}` "
-            f"and then just run `qlever ui` again"
+            f"and then just run `{script_name} {args.engine} ui` again"
         )
         return True

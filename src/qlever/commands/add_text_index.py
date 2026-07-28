@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
+from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
@@ -17,7 +18,10 @@ class AddTextIndexCommand(QleverCommand):
         pass
 
     def description(self) -> str:
-        return "Add text index to an index built with `qlever index`"
+        return (
+            "Add text index to an index built with "
+            f"`{script_name} qlever index`"
+        )
 
     def should_have_qleverfile(self) -> bool:
         return True
