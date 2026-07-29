@@ -18,6 +18,9 @@ from virtuoso.commands.stop import StopCommand
 NUM_BUFFERS_PER_GB = 85_000
 MAX_DIRTY_BUFFERS_PER_GB = 65_000
 
+# How long to wait for the server started for loading to come online.
+SERVER_STARTUP_TIMEOUT_S = 60
+
 
 def find_virtuoso_pid(lck_path: Path) -> int | None:
     """
@@ -72,42 +75,59 @@ def log_virtuoso_ini_changes(
         log.info("")
 
 
-def virtuoso_ini_help_msg(args, ini_files: list[str]) -> str:
+def virtuoso_ini_missing_msg(args, ini_files: list[str]) -> str:
     """
-    Return a help message depending on how many .ini files are present in the
-    current directory: none (suggest setup-config), exactly one (will be
-    renamed), or multiple (ambiguous, user must resolve).
+    Message for a missing <name>.virtuoso.ini, with a hint that depends on
+    how many .ini files are there instead: none (suggest setup-config),
+    exactly one (will be renamed), or several (ambiguous).
     """
-    ini_msg = (
-        "No .ini configfile present. Did you call "
-        f"`{script_name} {args.engine} setup-config`?"
-    )
     if len(ini_files) == 1:
-        ini_msg = (
-            f"{str(ini_files[0])} would be renamed to "
+        hint = (
+            f"{ini_files[0]} would be renamed to "
             f"{args.name}.virtuoso.ini and used as the configfile"
         )
     elif len(ini_files) > 1:
-        ini_msg = (
+        hint = (
             "More than 1 .ini files found in the current "
             f"directory: {ini_files}\n"
             f"Make sure to only have a unique {args.name}.virtuoso.ini!"
         )
-    return ini_msg
+    else:
+        hint = (
+            "No .ini configfile present. Did you call "
+            f"`{script_name} {args.engine} setup-config`?"
+        )
+    return (
+        f"{args.name}.virtuoso.ini configfile not found in the current "
+        f"directory! {hint}"
+    )
 
 
-def config_dict_for_update_ini(
-    args,
-) -> dict[str, dict[str, tuple[str, bool]]]:
+def resolve_virtuoso_ini(args) -> bool:
     """
-    Construct the parameter dictionary for all the necessary sections and
-    options of virtuoso.ini that need updating for the index process.
+    Make sure <name>.virtuoso.ini exists, renaming the sole .ini file in
+    the current directory to it if needed. False if that is not possible.
+    """
+    if Path(f"{args.name}.virtuoso.ini").exists():
+        return True
+    ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
+    if len(ini_files) != 1:
+        log.error(virtuoso_ini_missing_msg(args, ini_files))
+        return False
+    Path(ini_files[0]).rename(f"{args.name}.virtuoso.ini")
+    log.info(f"{ini_files[0]} renamed to {args.name}.virtuoso.ini!")
+    return True
+
+
+def index_ini_config(args) -> dict[str, dict[str, tuple[str, bool]]]:
+    """
+    The virtuoso.ini sections and options that `index` needs to update.
     Each value is a (new_value, is_suffix) tuple.
     """
     http_port = (
-        f"{args.host_name}:{args.port}"
-        if args.system == "native"
-        else str(args.port)
+        str(args.port)
+        if args.system in Containerize.supported_systems()
+        else f"{args.host_name}:{args.port}"
     )
     # `parse_memory` guarantees the `<int>G` shape, so this cannot raise.
     memory_for_buffers_gb = int(args.memory_for_buffers[:-1])
@@ -134,12 +154,21 @@ def config_dict_for_update_ini(
 
 
 def wrap_cmd_in_container(
-    args, start_cmd: str, ld_dir_cmd: str, run_cmds: list[str]
+    args,
+    start_cmd: str,
+    ld_dir_cmd: str,
+    run_cmds: list[str],
+    separator: str,
 ) -> tuple[str, str, str]:
     """
     Wrap the three indexing phases (start server, register files, load
     data) into container commands. The server runs detached, while
-    ld_dir and rdf_loader_run are executed via `docker exec`.
+    ld_dir and rdf_loader_run are executed via `docker exec`, joined by
+    the same separator as in the native case.
+
+    No `working_directory` is needed: the Virtuoso image already has
+    /database as its working directory, which is where the current
+    directory is mounted, so relative paths resolve into the mount.
     """
     start_cmd = Containerize().containerize_command(
         cmd=f"{start_cmd} -f",
@@ -154,7 +183,6 @@ def wrap_cmd_in_container(
     exec_cmd = f"{args.system} exec {args.index_container}"
 
     ld_dir_cmd = f"{exec_cmd} {ld_dir_cmd}"
-    separator = " " if len(run_cmds) > 2 else "; "
     run_cmd = f'{exec_cmd} bash -c "{separator.join(run_cmds)}"'
 
     return start_cmd, ld_dir_cmd, run_cmd
@@ -181,7 +209,7 @@ class IndexCommand(QleverCommand):
 
     def relevant_qleverfile_arguments(self) -> dict[str, list[str]]:
         return {
-            "data": ["name", "format"],
+            "data": ["name"],
             "index": [
                 "input_files",
                 "index_binary",
@@ -234,18 +262,15 @@ class IndexCommand(QleverCommand):
         run_cmd_to_show = "\n".join(run_cmds)
         if args.system in Containerize.supported_systems():
             start_cmd, ld_dir_cmd, run_cmd = wrap_cmd_in_container(
-                args, start_cmd, ld_dir_cmd, run_cmds
+                args, start_cmd, ld_dir_cmd, run_cmds, separator
             )
             run_cmd_to_show = run_cmd
 
-        ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-        if not Path(f"{args.name}.virtuoso.ini").exists():
-            self.show(
-                f"{args.name}.virtuoso.ini configfile not found in the current "
-                f"directory! {virtuoso_ini_help_msg(args, ini_files)}"
-            )
+        if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
+            ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
+            self.show(virtuoso_ini_missing_msg(args, ini_files))
 
-        virtuoso_ini_config_dict = config_dict_for_update_ini(args)
+        virtuoso_ini_config_dict = index_ini_config(args)
         log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
 
         cmd_to_show = f"{start_cmd}\n\n{ld_dir_cmd}\n{run_cmd_to_show}"
@@ -304,19 +329,8 @@ class IndexCommand(QleverCommand):
                 )
                 return False
 
-        # Rename the virtuoso.ini file to {args.name}.virtuoso.ini if needed
-        if not Path(f"{args.name}.virtuoso.ini").exists():
-            if len(ini_files) == 1:
-                Path(ini_files[0]).rename(f"{args.name}.virtuoso.ini")
-                log.info(
-                    f"{ini_files[0]} renamed to {args.name}.virtuoso.ini!"
-                )
-            else:
-                log.error(
-                    f"{args.name}.virtuoso.ini configfile not found in the current "
-                    f"directory! {virtuoso_ini_help_msg(args, ini_files)}"
-                )
-                return False
+        if not resolve_virtuoso_ini(args):
+            return False
 
         if not update_virtuoso_ini(args.name, virtuoso_ini_config_dict):
             return False
@@ -341,7 +355,6 @@ class IndexCommand(QleverCommand):
             util.run_command(start_cmd)
             log.info("Waiting for Virtuoso server to be online...")
             start_time = time.time()
-            timeout = 60
             log_file = Path(f"{args.name}.index-log.txt")
             log_proc = None
             # Wait until the Virtuoso server is online, and start tailing
@@ -351,8 +364,11 @@ class IndexCommand(QleverCommand):
             while not util.is_server_alive(
                 f"http://{args.host_name}:{args.port}/sparql"
             ):
-                if time.time() - start_time > timeout:
-                    log.error("Timed out waiting for Virtuoso to be online.")
+                if time.time() - start_time > SERVER_STARTUP_TIMEOUT_S:
+                    log.error(
+                        "Timed out waiting for Virtuoso to be online after "
+                        f"{SERVER_STARTUP_TIMEOUT_S} seconds."
+                    )
                     stop_server()
                     return False
                 if log_proc is None and log_file.exists():

@@ -11,20 +11,18 @@ from qlever.log import log
 from qlever.util import is_server_alive, run_command, tail_log_file
 from virtuoso.commands.index import (
     log_virtuoso_ini_changes,
+    resolve_virtuoso_ini,
     update_virtuoso_ini,
-    virtuoso_ini_help_msg,
+    virtuoso_ini_missing_msg,
 )
 from virtuoso.commands.stop import StopCommand
 
 VIRTUOSO_MAX_RESULT_ROWS = 1048576
 
 
-def config_dict_for_update_ini(
-    args,
-) -> dict[str, dict[str, tuple[str, bool]]]:
+def server_ini_config(args) -> dict[str, dict[str, tuple[str, bool]]]:
     """
-    Construct the parameter dictionary for all the necessary sections and
-    options of virtuoso.ini that need updating for the start process.
+    The virtuoso.ini sections and options that `start` needs to update.
     Each value is a (new_value, is_suffix) tuple.
     """
     http_port = (
@@ -55,7 +53,13 @@ def config_dict_for_update_ini(
 
 
 def wrap_cmd_in_container(args, cmd: str) -> str:
-    """Wrap the server start command in a container with restart policy."""
+    """
+    Wrap the server start command in a container with restart policy.
+
+    No `working_directory` is needed: the Virtuoso image already has
+    /database as its working directory, which is where the current
+    directory is mounted, so relative paths resolve into the mount.
+    """
     run_subcommand = "run --restart=unless-stopped --group-add virtuoso"
     if not args.run_in_foreground:
         run_subcommand += " -d"
@@ -116,22 +120,20 @@ class StartCommand(QleverCommand):
         )
 
     def execute(self, args) -> bool:
-        start_cmd = f"{args.server_binary} -c {args.name}.virtuoso.ini {args.extra_args} "
+        start_cmd = (
+            f"{args.server_binary} -c {args.name}.virtuoso.ini "
+            f"{args.extra_args}"
+        ).rstrip()
         if args.system in Containerize.supported_systems():
             start_cmd = wrap_cmd_in_container(args, f"{start_cmd} -f")
-        else:
-            if args.run_in_foreground:
-                start_cmd += " -f"
+        elif args.run_in_foreground:
+            start_cmd += " -f"
 
-        ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-        if not Path(f"{args.name}.virtuoso.ini").exists():
-            self.show(
-                f"{args.name}.virtuoso.ini configfile "
-                "not found in the current directory! "
-                f"{virtuoso_ini_help_msg(args, ini_files)}"
-            )
+        if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
+            ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
+            self.show(virtuoso_ini_missing_msg(args, ini_files))
 
-        virtuoso_ini_config_dict = config_dict_for_update_ini(args)
+        virtuoso_ini_config_dict = server_ini_config(args)
         log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
         # Show the command line.
         self.show(start_cmd, only_show=args.show)
@@ -170,23 +172,15 @@ class StartCommand(QleverCommand):
             )
             return False
 
-        # Rename the virtuoso.ini file to {args.name}.virtuoso.ini if needed
-        if not Path(f"{args.name}.virtuoso.ini").exists():
-            if len(ini_files) == 1:
-                Path(ini_files[0]).rename(f"{args.name}.virtuoso.ini")
-                log.info(
-                    f"{ini_files[0]} renamed to {args.name}.virtuoso.ini!"
-                )
-            else:
-                log.error(
-                    f"{args.name}.virtuoso.ini configfile "
-                    "not found in the current directory! "
-                    f"{virtuoso_ini_help_msg(args, ini_files)}"
-                )
-                return False
+        if not resolve_virtuoso_ini(args):
+            return False
 
         if not update_virtuoso_ini(args.name, virtuoso_ini_config_dict):
             return False
+
+        # Remove old log file so that tail starts clean.
+        log_file = Path(f"{args.name}.server-log.txt")
+        log_file.unlink(missing_ok=True)
 
         try:
             process = run_command(
@@ -211,7 +205,6 @@ class StartCommand(QleverCommand):
                 " (Ctrl-C stops following the log, but NOT the server)"
             )
         log.info("")
-        log_file = Path(f"{args.name}.server-log.txt")
         log_proc = tail_log_file(log_file)
         if log_proc is None:
             return False

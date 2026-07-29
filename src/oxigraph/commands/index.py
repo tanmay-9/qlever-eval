@@ -54,7 +54,7 @@ class IndexCommand(QleverCommand):
 
     def relevant_qleverfile_arguments(self) -> dict[str, list[str]]:
         return {
-            "data": ["name", "format"],
+            "data": ["name"],
             "index": [
                 "input_files",
                 "ulimit",
