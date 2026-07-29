@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import shutil
-import time
 from pathlib import Path
 
 from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
-from qlever.util import is_server_alive, run_command, tail_log_file
+from qlever.util import (
+    follow_server_log,
+    is_server_alive,
+    run_command,
+    server_liveness_check,
+    wait_for_foreground_server,
+    wait_until_server_ready,
+)
 from virtuoso.commands.index import (
     log_virtuoso_ini_changes,
     resolve_virtuoso_ini,
     update_virtuoso_ini,
     virtuoso_ini_missing_msg,
+    virtuoso_ini_to_update,
 )
 from virtuoso.commands.stop import StopCommand
 
@@ -130,11 +137,11 @@ class StartCommand(QleverCommand):
             start_cmd += " -f"
 
         if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
-            ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-            self.show(virtuoso_ini_missing_msg(args, ini_files))
+            self.show(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = server_ini_config(args)
-        log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
+        if virtuoso_ini_to_update(args) is not None:
+            log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
         # Show the command line.
         self.show(start_cmd, only_show=args.show)
         if args.show:
@@ -193,28 +200,22 @@ class StartCommand(QleverCommand):
 
         # Tail the server log until the server is ready (note that the `exec`
         # is important to make sure that the tail process is killed and not
-        # just the bash process).
-        if args.run_in_foreground:
-            log.info(
-                "Follow the server logs as long as the server is"
-                " running (Ctrl-C stops the server)"
-            )
-        else:
-            log.info(
-                "Follow the server logs until the server is ready"
-                " (Ctrl-C stops following the log, but NOT the server)"
-            )
-        log.info("")
-        log_proc = tail_log_file(log_file)
+        # just the bash process). `virtuoso-t` daemonizes itself, so in native
+        # background mode the liveness check has no handle, as with `nohup`.
+        log_proc = follow_server_log(log_file, args.run_in_foreground)
         if log_proc is None:
             return False
-        while not is_server_alive(endpoint_url):
-            time.sleep(1)
+        if not wait_until_server_ready(
+            lambda: is_server_alive(endpoint_url),
+            server_liveness_check(args, process),
+        ):
+            log_proc.terminate()
+            return False
 
         log.info(
             f"Virtuoso server webapp for {args.name} will be available "
             f"at http://{args.host_name}:{args.port} and the sparql "
-            f"endpoint for queries is http://{args.host_name}:{args.port}/sparql"
+            f"endpoint for queries is {endpoint_url}"
         )
 
         # Kill the log process
@@ -222,15 +223,14 @@ class StartCommand(QleverCommand):
             log_proc.terminate()
 
         # With `--run-in-foreground`, wait until the server is stopped.
+        # On Ctrl-C, terminate the process and clean up the container.
         if args.run_in_foreground:
-            try:
-                process.wait()
-            except KeyboardInterrupt:
-                process.terminate()
-                # Remove the container if the user stops the server process
+
+            def stop_container() -> None:
                 if args.system in Containerize.supported_systems():
                     args.cmdline_regex = StopCommand.DEFAULT_REGEX
                     StopCommand().execute(args)
-            log_proc.terminate()
+
+            wait_for_foreground_server(process, log_proc, stop_container)
 
         return True

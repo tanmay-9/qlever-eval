@@ -75,16 +75,30 @@ def log_virtuoso_ini_changes(
         log.info("")
 
 
-def virtuoso_ini_missing_msg(args, ini_files: list[str]) -> str:
+def virtuoso_ini_to_update(args) -> Path | None:
+    """
+    The .ini file that index and start will write their settings to:
+    <name>.virtuoso.ini, or the sole .ini file that would be renamed to
+    it. None if there is no such file.
+    """
+    ini_path = Path(f"{args.name}.virtuoso.ini")
+    if ini_path.exists():
+        return ini_path
+    ini_files = list(Path(".").glob("*.ini"))
+    return ini_files[0] if len(ini_files) == 1 else None
+
+
+def virtuoso_ini_missing_msg(args) -> str:
     """
     Message for a missing <name>.virtuoso.ini, with a hint that depends on
     how many .ini files are there instead: none (suggest setup-config),
     exactly one (will be renamed), or several (ambiguous).
     """
+    ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
     if len(ini_files) == 1:
         hint = (
             f"{ini_files[0]} would be renamed to "
-            f"{args.name}.virtuoso.ini and used as the configfile"
+            f"{args.name}.virtuoso.ini and used as the config file."
         )
     elif len(ini_files) > 1:
         hint = (
@@ -94,11 +108,11 @@ def virtuoso_ini_missing_msg(args, ini_files: list[str]) -> str:
         )
     else:
         hint = (
-            "No .ini configfile present. Did you call "
+            "No .ini config file present. Did you call "
             f"`{script_name} {args.engine} setup-config`?"
         )
     return (
-        f"{args.name}.virtuoso.ini configfile not found in the current "
+        f"{args.name}.virtuoso.ini config file not found in the current "
         f"directory! {hint}"
     )
 
@@ -108,14 +122,14 @@ def resolve_virtuoso_ini(args) -> bool:
     Make sure <name>.virtuoso.ini exists, renaming the sole .ini file in
     the current directory to it if needed. False if that is not possible.
     """
-    if Path(f"{args.name}.virtuoso.ini").exists():
-        return True
-    ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-    if len(ini_files) != 1:
-        log.error(virtuoso_ini_missing_msg(args, ini_files))
+    ini_path = Path(f"{args.name}.virtuoso.ini")
+    ini_to_update = virtuoso_ini_to_update(args)
+    if ini_to_update is None:
+        log.error(virtuoso_ini_missing_msg(args))
         return False
-    Path(ini_files[0]).rename(f"{args.name}.virtuoso.ini")
-    log.info(f"{ini_files[0]} renamed to {args.name}.virtuoso.ini!")
+    if ini_to_update != ini_path:
+        ini_to_update.rename(ini_path)
+        log.info(f"{ini_to_update} renamed to {ini_path}!")
     return True
 
 
@@ -267,11 +281,11 @@ class IndexCommand(QleverCommand):
             run_cmd_to_show = run_cmd
 
         if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
-            ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-            self.show(virtuoso_ini_missing_msg(args, ini_files))
+            self.show(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = index_ini_config(args)
-        log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
+        if virtuoso_ini_to_update(args) is not None:
+            log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
 
         cmd_to_show = f"{start_cmd}\n\n{ld_dir_cmd}\n{run_cmd_to_show}"
 
@@ -320,6 +334,21 @@ class IndexCommand(QleverCommand):
             )
             return False
 
+        # Loading needs its own server, so the database must not be served
+        # by another one. This is most likely to happen with
+        # --extend-existing-index.
+        endpoint_url = f"http://{args.host_name}:{args.port}/sparql"
+        if util.is_server_alive(endpoint_url):
+            log.error(
+                f"Virtuoso server for {args.name} is already running on "
+                f"{endpoint_url}\n"
+            )
+            log.info(
+                "Stop it with "
+                f"`{script_name} {args.engine} stop` before indexing"
+            )
+            return False
+
         if args.system not in Containerize.supported_systems():
             if util.is_port_used(args.isql_port):
                 log.error(
@@ -345,6 +374,10 @@ class IndexCommand(QleverCommand):
             except Exception as stop_err:
                 log.warning(f"Failed to stop Virtuoso server: {stop_err}")
 
+        # The process that tails the index log, terminated in the `finally`
+        # below so that it does not outlive a failed index.
+        log_proc = None
+
         # Run the index command.
         try:
             # Delete any existing old log files for a fresh index so that the
@@ -356,14 +389,11 @@ class IndexCommand(QleverCommand):
             log.info("Waiting for Virtuoso server to be online...")
             start_time = time.time()
             log_file = Path(f"{args.name}.index-log.txt")
-            log_proc = None
             # Wait until the Virtuoso server is online, and start tailing
             # the index log file as soon as it exists (note that the `exec`
             # is important to make sure that the tail process is killed and
             # not just the bash process).
-            while not util.is_server_alive(
-                f"http://{args.host_name}:{args.port}/sparql"
-            ):
+            while not util.is_server_alive(endpoint_url):
                 if time.time() - start_time > SERVER_STARTUP_TIMEOUT_S:
                     log.error(
                         "Timed out waiting for Virtuoso to be online after "
@@ -420,3 +450,6 @@ class IndexCommand(QleverCommand):
             log.error(f"Building the index failed: {e}")
             stop_server()
             return False
+        finally:
+            if log_proc is not None:
+                log_proc.terminate()
