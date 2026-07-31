@@ -12,7 +12,9 @@ from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
 from qlever.resource_usage.resource_monitor import ResourceMonitor
+from virtuoso.commands.index_stats import write_settings_marker
 from virtuoso.commands.stop import StopCommand
+from virtuoso.resource_usage.usage_plot import UsagePlot
 
 # Virtuoso buffer tuning constants (per GB of free memory)
 NUM_BUFFERS_PER_GB = 85_000
@@ -231,6 +233,7 @@ class IndexCommand(QleverCommand):
                 "num_parallel_loaders",
                 "memory_for_buffers",
                 "resource_usage_interval",
+                "resource_usage_plot_max_points",
             ],
             "server": ["host_name", "port", "server_binary"],
             "runtime": ["system", "image", "index_container"],
@@ -248,8 +251,26 @@ class IndexCommand(QleverCommand):
                 "large datasets to prevent total data loss in case of failure."
             ),
         )
+        subparser.add_argument(
+            "--resource-usage-plot-only",
+            action="store_true",
+            default=False,
+            help="Only render the resource-usage plot from the existing "
+            "`<name>.index.resource-usage-log.tsv`; do not build the index. "
+            "Use to re-render with a different "
+            "`--resource-usage-plot-max-points`",
+        )
 
     def execute(self, args) -> bool:
+        # Render the resource-usage plot from the existing log without
+        # rebuilding the index.
+        if args.resource_usage_plot_only:
+            plot_path = UsagePlot(args).render()
+            if plot_path is None:
+                return False
+            log.info(f"Resource-usage plot saved to `{plot_path.name}`")
+            return True
+
         num_parallel_loaders = args.num_parallel_loaders
         start_cmd = f"{args.server_binary} -c {args.name}.virtuoso.ini"
 
@@ -408,6 +429,19 @@ class IndexCommand(QleverCommand):
                         show_output=True,
                     )
                 time.sleep(1)
+
+            # Record this run's settings now that the server is online, so
+            # that the marker lands between its "Server online" line and
+            # the "Checkpoint finished" that ends the run.
+            parameters = virtuoso_ini_config_dict["Parameters"]
+            write_settings_marker(
+                log_file,
+                num_buffers=parameters["NumberOfBuffers"][0],
+                max_dirty_buffers=parameters["MaxDirtyBuffers"][0],
+                loaders=args.num_parallel_loaders,
+                memory_for_buffers=args.memory_for_buffers,
+            )
+
             # Execute the ld_dir and rdf_loader_run commands
             log.info("Virtuoso server online! Loading data into Virtuoso...\n")
 
@@ -422,6 +456,10 @@ class IndexCommand(QleverCommand):
                         "virtuoso.lck; resource monitoring will be skipped"
                     )
 
+            monitored = (
+                args.system in Containerize.supported_systems()
+                or virtuoso_pid is not None
+            )
             monitor_ctx = (
                 ResourceMonitor(
                     dataset=args.name,
@@ -430,9 +468,11 @@ class IndexCommand(QleverCommand):
                     system=args.system,
                     interval=args.resource_usage_interval,
                     parent_pid=virtuoso_pid,
+                    # Extending keeps the runs of the existing index in the
+                    # log, so that the plot covers all of them.
+                    append=args.extend_existing_index,
                 )
-                if args.system in Containerize.supported_systems()
-                or virtuoso_pid is not None
+                if monitored
                 else nullcontext()
             )
 
@@ -445,6 +485,18 @@ class IndexCommand(QleverCommand):
             log.info("Data loading has finished!")
 
             stop_server()
+
+            if monitored:
+                plot_path = UsagePlot(args).render()
+                if plot_path is not None:
+                    log.info(
+                        f"Resource-usage plot saved to `{plot_path.name}`"
+                    )
+            else:
+                log.warning(
+                    "Not rendering a resource-usage plot: this run was not "
+                    "monitored, so the plot would not cover it"
+                )
             return True
         except Exception as e:
             log.error(f"Building the index failed: {e}")

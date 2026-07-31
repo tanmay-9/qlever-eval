@@ -179,6 +179,34 @@ def bands_from_durations(
     return bands
 
 
+# Separator between the fields of a subtitle, and the width at which the
+# title starts to be clipped by a 12in figure's axes.
+SUBTITLE_SEPARATOR = "   |   "
+SUBTITLE_MAX_CHARS = 105
+
+
+def wrap_subtitle(subtitle: str) -> str:
+    """
+    Break a subtitle at its field separators into lines that fit the axes.
+    Engines whose subtitle grows with the number of index runs would
+    otherwise have it clipped at both ends.
+    """
+    lines = []
+    for line in subtitle.split("\n"):
+        fields = line.split(SUBTITLE_SEPARATOR)
+        current = fields[0]
+        for field in fields[1:]:
+            if len(current) + len(SUBTITLE_SEPARATOR) + len(field) > (
+                SUBTITLE_MAX_CHARS
+            ):
+                lines.append(current)
+                current = field
+            else:
+                current += SUBTITLE_SEPARATOR + field
+        lines.append(current)
+    return "\n".join(lines)
+
+
 def build_plot_subtitle(
     log_path: Path, stxxl_memory: str, settings_json: str
 ) -> str | None:
@@ -346,7 +374,27 @@ class UsagePlot:
         engine_name = engine_names[self.args.engine]
         title = f"{engine_name} index build: {self.dataset}"
         subtitle = self.subtitle()
-        ax_mem.set_title(f"{title}\n{subtitle}" if subtitle else title)
+
+        # The bands come from the index log but the axis comes from the
+        # samples. If the bands reach past the last sample, the two do not
+        # describe the same work, so the shading sits on the wrong part of
+        # the curve. Allow for the last sample being up to one interval
+        # before the monitor stopped.
+        tolerance_s = 2 * self.args.resource_usage_interval + 5
+        bands_end_s = max((end_s for _, _, end_s in overlay), default=0.0)
+        if bands_end_s > total_s + tolerance_s:
+            note = "(!) shading exceeds the sampled range"
+            log.warning(
+                f"The phases in `{self.log_path.name}` cover "
+                f"{bands_end_s:.0f}s but only {total_s:.0f}s were sampled, "
+                "so the shaded regions may not line up with the curves"
+            )
+            # On its own line: the subtitle is already near the axes width.
+            subtitle = f"{subtitle}\n{note}" if subtitle else note
+
+        ax_mem.set_title(
+            f"{title}\n{wrap_subtitle(subtitle)}" if subtitle else title
+        )
         fig.savefig(plot_path, dpi=120)
         plt.close(fig)
         return True
