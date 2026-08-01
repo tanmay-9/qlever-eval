@@ -15,6 +15,13 @@ from qlever.resource_usage.resource_monitor import ResourceMonitor
 from virtuoso.commands.index_stats import write_settings_marker
 from virtuoso.commands.stop import StopCommand
 from virtuoso.resource_usage.usage_plot import UsagePlot
+from virtuoso.util import (
+    log_virtuoso_ini_changes,
+    resolve_virtuoso_ini,
+    update_virtuoso_ini,
+    virtuoso_ini_exists,
+    virtuoso_ini_missing_msg,
+)
 
 # Virtuoso buffer tuning constants (per GB of free memory)
 NUM_BUFFERS_PER_GB = 85_000
@@ -36,103 +43,6 @@ def find_virtuoso_pid(lck_path: Path) -> int | None:
         return None
     match = re.search(r"VIRT_PID\s*=\s*(\d+)", content)
     return int(match.group(1)) if match else None
-
-
-def update_virtuoso_ini(
-    arg_name: str,
-    config_dict: dict[str, dict[str, tuple[str, bool]]],
-) -> bool:
-    """
-    Read the virtuoso.ini file, apply the updates from config_dict,
-    and write it back.
-    """
-    ini_path = Path(f"{arg_name}.virtuoso.ini")
-    try:
-        lines = ini_path.read_text().splitlines()
-        result = util.update_ini_values(lines, config_dict)
-        ini_path.write_text("\n".join(result) + "\n")
-        return True
-    except Exception as e:
-        log.error(f"Couldn't update {arg_name}.virtuoso.ini: {e}")
-        return False
-
-
-def log_virtuoso_ini_changes(
-    arg_name: str,
-    config_dict: dict[str, dict[str, tuple[str, bool]]],
-):
-    """
-    Log the section/option values that will be written to virtuoso.ini.
-    Called before execution so the user can review what will change.
-    """
-    log.info(
-        f"Following options of {arg_name}.virtuoso.ini will be updated "
-        "with the values from Qleverfile:\n"
-    )
-    for section, option_dict in config_dict.items():
-        log_values = [f"[{section}]"]
-        for option, (new_value, _) in option_dict.items():
-            log_values.append(f"{option}  =  {new_value}")
-        log.info("\n".join(log_values))
-        log.info("")
-
-
-def virtuoso_ini_to_update(args) -> Path | None:
-    """
-    The .ini file that index and start will write their settings to:
-    <name>.virtuoso.ini, or the sole .ini file that would be renamed to
-    it. None if there is no such file.
-    """
-    ini_path = Path(f"{args.name}.virtuoso.ini")
-    if ini_path.exists():
-        return ini_path
-    ini_files = list(Path(".").glob("*.ini"))
-    return ini_files[0] if len(ini_files) == 1 else None
-
-
-def virtuoso_ini_missing_msg(args) -> str:
-    """
-    Message for a missing <name>.virtuoso.ini, with a hint that depends on
-    how many .ini files are there instead: none (suggest setup-config),
-    exactly one (will be renamed), or several (ambiguous).
-    """
-    ini_files = [str(ini) for ini in Path(".").glob("*.ini")]
-    if len(ini_files) == 1:
-        hint = (
-            f"{ini_files[0]} would be renamed to "
-            f"{args.name}.virtuoso.ini and used as the config file."
-        )
-    elif len(ini_files) > 1:
-        hint = (
-            "More than 1 .ini files found in the current "
-            f"directory: {ini_files}\n"
-            f"Make sure to only have a unique {args.name}.virtuoso.ini!"
-        )
-    else:
-        hint = (
-            "No .ini config file present. Did you call "
-            f"`{script_name} {args.engine} setup-config`?"
-        )
-    return (
-        f"{args.name}.virtuoso.ini config file not found in the current "
-        f"directory! {hint}"
-    )
-
-
-def resolve_virtuoso_ini(args) -> bool:
-    """
-    Make sure <name>.virtuoso.ini exists, renaming the sole .ini file in
-    the current directory to it if needed. False if that is not possible.
-    """
-    ini_path = Path(f"{args.name}.virtuoso.ini")
-    ini_to_update = virtuoso_ini_to_update(args)
-    if ini_to_update is None:
-        log.error(virtuoso_ini_missing_msg(args))
-        return False
-    if ini_to_update != ini_path:
-        ini_to_update.rename(ini_path)
-        log.info(f"{ini_to_update} renamed to {ini_path}!")
-    return True
 
 
 def index_ini_config(args) -> dict[str, dict[str, tuple[str, bool]]]:
@@ -301,11 +211,11 @@ class IndexCommand(QleverCommand):
             )
             run_cmd_to_show = run_cmd
 
-        if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
+        if args.show and not virtuoso_ini_exists(args):
             self.show(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = index_ini_config(args)
-        if virtuoso_ini_to_update(args) is not None:
+        if virtuoso_ini_exists(args):
             log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
 
         cmd_to_show = f"{start_cmd}\n\n{ld_dir_cmd}\n{run_cmd_to_show}"
@@ -395,6 +305,8 @@ class IndexCommand(QleverCommand):
             except Exception as stop_err:
                 log.warning(f"Failed to stop Virtuoso server: {stop_err}")
 
+        monitored = False
+
         # The process that tails the index log, terminated in the `finally`
         # below so that it does not outlive a failed index.
         log_proc = None
@@ -420,7 +332,6 @@ class IndexCommand(QleverCommand):
                         "Timed out waiting for Virtuoso to be online after "
                         f"{SERVER_STARTUP_TIMEOUT_S} seconds."
                     )
-                    stop_server()
                     return False
                 if log_proc is None and log_file.exists():
                     log_proc = util.run_command(
@@ -479,29 +390,24 @@ class IndexCommand(QleverCommand):
             with monitor_ctx:
                 util.run_command(ld_dir_cmd)
                 util.run_command(run_cmd)
-            if log_proc is not None:
-                log_proc.terminate()
             log.info("")
             log.info("Data loading has finished!")
-
-            stop_server()
-
-            if monitored:
-                plot_path = UsagePlot(args).render()
-                if plot_path is not None:
-                    log.info(
-                        f"Resource-usage plot saved to `{plot_path.name}`"
-                    )
-            else:
-                log.warning(
-                    "Not rendering a resource-usage plot: this run was not "
-                    "monitored, so the plot would not cover it"
-                )
-            return True
         except Exception as e:
             log.error(f"Building the index failed: {e}")
-            stop_server()
             return False
         finally:
+            # Before the log tail, so that the shutdown lines still show.
+            stop_server()
             if log_proc is not None:
                 log_proc.terminate()
+
+        if monitored:
+            plot_path = UsagePlot(args).render()
+            if plot_path is not None:
+                log.info(f"Resource-usage plot saved to `{plot_path.name}`")
+        else:
+            log.warning(
+                "Not rendering a resource-usage plot: this run was not "
+                "monitored, so the plot would not cover it"
+            )
+        return True

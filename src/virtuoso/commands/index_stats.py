@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from qlever import script_name
 from qlever.commands.index_stats import (
     IndexStatsCommand as QleverIndexStatsCommand,
 )
@@ -19,7 +20,7 @@ from qlever.util import get_total_file_size
 
 # Line that `index` writes to the log before starting the server, holding
 # the settings of the run that follows: "qeval: NumberOfBuffers=340000 ...".
-SETTINGS_MARKER_PREFIX = "qeval:"
+SETTINGS_MARKER_PREFIX = f"{script_name}:"
 
 
 def write_settings_marker(

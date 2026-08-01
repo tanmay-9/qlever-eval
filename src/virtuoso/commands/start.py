@@ -15,14 +15,14 @@ from qlever.util import (
     wait_for_foreground_server,
     wait_until_server_ready,
 )
-from virtuoso.commands.index import (
+from virtuoso.commands.stop import StopCommand
+from virtuoso.util import (
     log_virtuoso_ini_changes,
     resolve_virtuoso_ini,
     update_virtuoso_ini,
+    virtuoso_ini_exists,
     virtuoso_ini_missing_msg,
-    virtuoso_ini_to_update,
 )
-from virtuoso.commands.stop import StopCommand
 
 VIRTUOSO_MAX_RESULT_ROWS = 1048576
 
@@ -136,11 +136,11 @@ class StartCommand(QleverCommand):
         elif args.run_in_foreground:
             start_cmd += " -f"
 
-        if args.show and not Path(f"{args.name}.virtuoso.ini").exists():
+        if args.show and not virtuoso_ini_exists(args):
             self.show(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = server_ini_config(args)
-        if virtuoso_ini_to_update(args) is not None:
+        if virtuoso_ini_exists(args):
             log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
         # Show the command line.
         self.show(start_cmd, only_show=args.show)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from configparser import RawConfigParser
+from pathlib import Path
+
 from termcolor import colored
 
 from oxigraph.commands.setup_config import (
@@ -49,31 +52,46 @@ class SetupConfigCommand(OxigraphSetupConfigCommand):
     def execute(self, args) -> bool:
         """
         Create the Qleverfile via the parent class, then download the default
-        virtuoso.ini into the current working directory.
+        virtuoso.ini into the current working directory, under the name that
+        `index` and `start` expect.
         """
         qleverfile_successfully_created = super().execute(args)
         if not qleverfile_successfully_created:
             return False
 
-        curl_cmd = f"curl -o virtuoso.ini {self.VIRTUOSO_INI_URL}"
+        # From the template, not the Qleverfile, which does not exist yet
+        # with `--show`. The two hold the same name, since `[data]` is
+        # copied verbatim.
+        template = RawConfigParser()
+        template.optionxform = str
+        template.read(self.qleverfiles_path / f"Qleverfile.{args.config_name}")
+        ini_path = Path(f"{template.get('data', 'NAME')}.virtuoso.ini")
+
+        curl_cmd = f"curl -fL --retry 3 -o {ini_path} {self.VIRTUOSO_INI_URL}"
         log.info("")
         if args.show:
             log.info(
-                "virtuoso.ini would be fetched using the following command:"
+                f"{ini_path} would be fetched using the following command:"
             )
             log.info(colored(curl_cmd, "blue"))
             return True
+        ini_existed = ini_path.exists()
         try:
-            log.info("Fetching virtuoso.ini configuration file...")
-            run_command(cmd=curl_cmd, show_output=True)
+            log.info(f"Fetching {ini_path} configuration file...")
+            run_command(cmd=curl_cmd, show_output=True, show_stderr=True)
             log.info(
-                "Successfully downloaded virtuoso.ini to the current working "
+                f"Successfully downloaded {ini_path} to the current working "
                 "directory!"
             )
         except Exception as e:
+            # A failed `curl -o` can leave an empty or partial file behind,
+            # which would later pass for a config file.
+            if not ini_existed:
+                ini_path.unlink(missing_ok=True)
             log.error(
-                "Couldn't download the virtuoso.ini configuration file."
-                f"If possible, please download it manually from {self.VIRTUOSO_INI_URL} "
-                f"and place it in the current directory. Error -> {e}"
+                f"Couldn't download the {ini_path} configuration file. "
+                "If possible, please download it manually from "
+                f"{self.VIRTUOSO_INI_URL} and save it as {ini_path} in the "
+                f"current directory. Error -> {e}"
             )
         return True
