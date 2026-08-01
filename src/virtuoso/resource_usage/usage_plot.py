@@ -31,7 +31,7 @@ def parse_virtuoso_version(log_path: str | Path) -> tuple[str, str] | None:
     return version
 
 
-def humanize_count(value: int | None) -> str:
+def shortened_count_str(value: int | None) -> str:
     """Shorten a buffer count for the subtitle, "?" if it is unknown."""
     if value is None:
         return "?"
@@ -75,8 +75,10 @@ class UsagePlot(BaseUsagePlot):
             )
         runs = parse_index_runs(self.log_path)
         if runs:
-            buffers = [humanize_count(run.num_buffers) for run in runs]
-            dirty = [humanize_count(run.max_dirty_buffers) for run in runs]
+            buffers = [shortened_count_str(run.num_buffers) for run in runs]
+            dirty = [
+                shortened_count_str(run.max_dirty_buffers) for run in runs
+            ]
             loaders = [
                 "?" if run.loaders is None else str(run.loaders)
                 for run in runs
