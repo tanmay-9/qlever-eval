@@ -1,6 +1,7 @@
 import argparse
 import unittest
 
+from qlever import script_name
 from qlever.commands.start import StartCommand
 from qlever.qleverfile import Qleverfile
 
@@ -11,7 +12,7 @@ class TestStartCommand(unittest.TestCase):
             StartCommand().description(),
             "Start the "
             "QLever server (requires that you have built "
-            "an index with `qlever index` before)",
+            f"an index with `{script_name} qlever index` before)",
         )
 
     def test_should_have_qleverfile(self):

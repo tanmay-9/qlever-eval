@@ -26,7 +26,7 @@ class QleverCommand(ABC):
     def description(self) -> str:
         """
         A concise description of the command, which will be shown when the user
-        types `qlever --help` or `qlever <command> --help`.
+        types `qeval <engine> --help` or `qeval <engine> <command> --help`.
         """
 
     @abstractmethod

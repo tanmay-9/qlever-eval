@@ -4,6 +4,7 @@ import json
 
 from termcolor import colored
 
+from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.log import log
 from qlever.qleverfile import Qleverfile
@@ -19,7 +20,9 @@ class SettingsCommand(QleverCommand):
         pass
 
     def description(self) -> str:
-        return "Show or set server settings (after `qlever start`)"
+        return (
+            f"Show or set server settings (after `{script_name} qlever start`)"
+        )
 
     def should_have_qleverfile(self) -> bool:
         return True

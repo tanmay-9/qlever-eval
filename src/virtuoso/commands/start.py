@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mdb.commands.stop import StopCommand
 from qlever import script_name
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
 from qlever.log import log
 from qlever.util import (
-    binary_exists,
     follow_server_log,
     is_server_alive,
     run_command,
@@ -16,21 +14,60 @@ from qlever.util import (
     wait_for_foreground_server,
     wait_until_server_ready,
 )
+from virtuoso.commands.stop import StopCommand
+from virtuoso.util import (
+    check_virtuoso_binary,
+    log_virtuoso_ini_changes,
+    resolve_virtuoso_ini,
+    update_virtuoso_ini,
+    virtuoso_ini_exists,
+    virtuoso_ini_missing_msg,
+)
 
-MDB_SPECIFIC_SERVER_ARGS = [
-    "strings_dynamic",
-    "strings_static",
-    "tensors_dynamic",
-    "tensors_static",
-    "private_buffer",
-    "versioned_buffer",
-    "unversioned_buffer",
-]
+VIRTUOSO_MAX_RESULT_ROWS = 1048576
+
+
+def server_ini_config(args) -> dict[str, dict[str, tuple[str, bool]]]:
+    """
+    The virtuoso.ini sections and options that `start` needs to update.
+    Each value is a (new_value, is_suffix) tuple.
+    """
+    http_port = (
+        str(args.port)
+        if args.system in Containerize.supported_systems()
+        else f"{args.host_name}:{args.port}"
+    )
+
+    # `parse_timeout` guarantees the `<int>s` shape, so this cannot raise.
+    timeout_s = int(args.timeout[:-1])
+
+    return {
+        "Parameters": {
+            "MaxQueryMem": (str(args.max_query_memory), False),
+        },
+        "HTTPServer": {
+            "ServerPort": (http_port, False),
+        },
+        "Database": {
+            "ErrorLogFile": (f"{args.name}.server-log.txt", False),
+        },
+        "SPARQL": {
+            "MaxQueryCostEstimationTime": ("-1", False),
+            "ResultSetMaxRows": (str(VIRTUOSO_MAX_RESULT_ROWS), False),
+            "MaxQueryExecutionTime": (str(timeout_s), False),
+        },
+    }
 
 
 def wrap_cmd_in_container(args, cmd: str) -> str:
-    """Wrap the server start command in a container with restart policy."""
-    run_subcommand = "run --restart=unless-stopped"
+    """
+    Wrap the server start command in a container with restart policy.
+
+    No `working_directory` is needed: the Virtuoso image already has
+    /database as its working directory, which is where the current
+    directory is mounted, so relative paths resolve into the mount.
+    """
+    run_subcommand = "run --restart=unless-stopped --group-add virtuoso"
     if not args.run_in_foreground:
         run_subcommand += " -d"
     return Containerize().containerize_command(
@@ -39,18 +76,17 @@ def wrap_cmd_in_container(args, cmd: str) -> str:
         run_subcommand=run_subcommand,
         image_name=args.image,
         container_name=args.server_container,
-        volumes=[("$(pwd)", "/data")],
-        working_directory="/data",
+        volumes=[("$(pwd)", "/database")],
         ports=[(args.port, args.port)],
     )
 
 
 class StartCommand(QleverCommand):
     """
-    Start the MillenniumDB SPARQL server for an already-indexed dataset.
-    Supports both native and containerized execution, with an option
-    to run in the foreground. Appends optional memory buffer arguments
-    (strings, tensors, versioned/unversioned) when configured.
+    Start the Virtuoso server (virtuoso-t) for an already-indexed dataset.
+    Before starting, updates virtuoso.ini with Qleverfile settings (ports,
+    timeouts, query memory, SPARQL limits). Supports both native and
+    containerized execution, with an option to run in the foreground.
     """
 
     def __init__(self):
@@ -58,7 +94,7 @@ class StartCommand(QleverCommand):
 
     def description(self) -> str:
         return (
-            "Start the server for MillenniumDB (requires that you have built an "
+            "Start the server for Virtuoso (requires that you have built an "
             "index before)"
         )
 
@@ -70,12 +106,11 @@ class StartCommand(QleverCommand):
             "data": ["name"],
             "server": [
                 "host_name",
+                "port",
                 "server_binary",
                 "timeout",
-                "port",
-                "threads",
+                "max_query_memory",
                 "extra_args",
-                *MDB_SPECIFIC_SERVER_ARGS,
             ],
             "runtime": ["system", "image", "server_container"],
         }
@@ -92,58 +127,55 @@ class StartCommand(QleverCommand):
         )
 
     def execute(self, args) -> bool:
-        timeout = int(args.timeout[:-1])
         start_cmd = (
-            f"{args.server_binary} server {args.name}_index "
-            f"--port {args.port} --timeout {timeout} "
-        )
-        if args.threads is not None:
-            start_cmd += f"--threads {args.threads} "
-        # Append optional MillenniumDB-specific buffer arguments when set.
-        for arg in MDB_SPECIFIC_SERVER_ARGS:
-            if arg_value := getattr(args, arg):
-                start_cmd += f"--{arg.replace('_', '-')} {arg_value}B "
-
-        if args.extra_args:
-            start_cmd += args.extra_args
-
-        start_cmd = f"{start_cmd} > {args.name}.server-log.txt 2>&1"
+            f"{args.server_binary} -c {args.name}.virtuoso.ini "
+            f"{args.extra_args}"
+        ).rstrip()
         if args.system in Containerize.supported_systems():
-            start_cmd = wrap_cmd_in_container(args, start_cmd)
-        else:
-            if not args.run_in_foreground:
-                start_cmd = f"nohup {start_cmd} &"
+            start_cmd = wrap_cmd_in_container(args, f"{start_cmd} -f")
+        elif args.run_in_foreground:
+            start_cmd += " -f"
 
+        if args.show and not virtuoso_ini_exists(args):
+            log.warning(virtuoso_ini_missing_msg(args))
+
+        virtuoso_ini_config_dict = server_ini_config(args)
+        if virtuoso_ini_exists(args):
+            log_virtuoso_ini_changes(args.name, virtuoso_ini_config_dict)
         # Show the command line.
         self.show(start_cmd, only_show=args.show)
         if args.show:
             return True
 
-        # When running natively, check if the binary exists and works.
+        endpoint_url = f"http://{args.host_name}:{args.port}/sparql"
+
+        # When running natively, check that the binary exists and runs.
         if args.system not in Containerize.supported_systems():
-            if not binary_exists(args.server_binary, "server-binary", args):
+            if not check_virtuoso_binary(args.server_binary, "server"):
                 return False
 
-        # Check if index files are present in the index directory.
-        index_dir = Path(f"{args.name}_index")
-        if not index_dir.exists() or not any(index_dir.iterdir()):
-            log.error(f"No MillenniumDB index files for {args.name} found!\n")
+        # Check if index db virtuoso.db present in cwd
+        if not Path("virtuoso.db").exists():
+            log.error(f"No Virtuoso index db for {args.name} found!\n")
             log.info(
                 f"Did you call `{script_name} {args.engine} index`? If you "
-                "did, check if index files are present in the index directory."
+                "did, check if virtuoso.db is present in current working "
+                "directory."
             )
             return False
 
-        # Check if server already alive at endpoint url from a previous run.
-        endpoint_url = f"http://{args.host_name}:{args.port}"
         if is_server_alive(url=endpoint_url):
-            log.error(
-                f"MillenniumDB server already running on {endpoint_url}/sparql\n"
-            )
+            log.error(f"Virtuoso server already running on {endpoint_url}\n")
             log.info(
                 "To kill the existing server, use "
                 f"`{script_name} {args.engine} stop`"
             )
+            return False
+
+        if not resolve_virtuoso_ini(args):
+            return False
+
+        if not update_virtuoso_ini(args.name, virtuoso_ini_config_dict):
             return False
 
         # Remove old log file so that tail starts clean.
@@ -156,12 +188,13 @@ class StartCommand(QleverCommand):
                 use_popen=args.run_in_foreground,
             )
         except Exception as e:
-            log.error(f"Starting the MillenniumDB server failed ({e})")
+            log.error(f"Starting the Virtuoso server failed ({e})")
             return False
 
         # Tail the server log until the server is ready (note that the `exec`
         # is important to make sure that the tail process is killed and not
-        # just the bash process).
+        # just the bash process). `virtuoso-t` daemonizes itself, so in native
+        # background mode the liveness check has no handle, as with `nohup`.
         log_proc = follow_server_log(log_file, args.run_in_foreground)
         if log_proc is None:
             return False
@@ -173,8 +206,9 @@ class StartCommand(QleverCommand):
             return False
 
         log.info(
-            "MillenniumDB server sparql endpoint for queries is "
-            f"{endpoint_url}/sparql"
+            f"Virtuoso server webapp for {args.name} will be available "
+            f"at http://{args.host_name}:{args.port} and the sparql "
+            f"endpoint for queries is {endpoint_url}"
         )
 
         # Kill the log process
@@ -186,7 +220,6 @@ class StartCommand(QleverCommand):
         if args.run_in_foreground:
 
             def stop_container() -> None:
-                # Remove the container if the user stops the server process
                 if args.system in Containerize.supported_systems():
                     args.cmdline_regex = StopCommand.DEFAULT_REGEX
                     StopCommand().execute(args)

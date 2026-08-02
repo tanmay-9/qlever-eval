@@ -9,9 +9,17 @@ to configure, index, start, query, and benchmark
 that competing systems can be set up and evaluated with the same commands and
 the same configuration style.
 
-Each supported database is selected as an engine argument to `qeval` (for
-example, `qeval oxigraph`) and mirrors the `qeval qlever` command-line
-interface. All of them speak
+Each supported database is selected as an engine argument to `qeval` and
+mirrors the `qeval qlever` command-line interface:
+
+- `qeval qlever` for [QLever](https://github.com/ad-freiburg/qlever)
+- `qeval oxigraph` for [Oxigraph](https://github.com/oxigraph/oxigraph)
+- `qeval mdb` for
+  [MillenniumDB](https://github.com/MillenniumDB/MillenniumDB)
+- `qeval virtuoso` for
+  [Virtuoso](https://github.com/openlink/virtuoso-opensource)
+
+All of them speak
 [RDF](https://www.w3.org/TR/rdf11-concepts/) and
 [SPARQL](https://www.w3.org/TR/sparql11-overview/), and all of them are driven
 by the same `Qleverfile` configuration format. This makes it straightforward to

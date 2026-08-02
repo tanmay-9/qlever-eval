@@ -1,0 +1,178 @@
+name: End-to-end test for virtuoso
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  virtuoso-end-to-end-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [native, docker, podman]
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install virtuoso (the qeval CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install the latest Virtuoso release binaries on PATH
+        if: matrix.system == 'native'
+        run: |
+          # The tarball unpacks to virtuoso-opensource/{bin,lib,vad,...}. Keep
+          # that tree together and only add its bin/ to PATH; the binaries
+          # need the rest of it next to them.
+          url=$(curl -sL https://api.github.com/repos/openlink/virtuoso-opensource/releases/latest \
+            | grep -oE 'https://[^"]+x86_64-generic_glibc25-linux-gnu\.tar\.gz' | head -1)
+          echo "Downloading Virtuoso binaries from $url"
+          curl -sL "$url" | tar -xz -C "$HOME"
+          virtuoso=$HOME/virtuoso-opensource
+          echo "$virtuoso/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$virtuoso/lib" >> "$GITHUB_ENV"
+
+          # `isql` wants libncurses.so.5 and Ubuntu 24.04 only ships 6, which
+          # works for what isql uses. `virtuoso-t` needs no ncurses at all.
+          ln -s /usr/lib/x86_64-linux-gnu/libncurses.so.6 \
+            "$virtuoso/lib/libncurses.so.5"
+
+          # Check both binaries actually run. An unresolved library prints a
+          # loader error instead of the banner, so this fails here rather than
+          # midway through `qeval virtuoso index`. Grep the banner instead of
+          # trusting the exit code: virtuoso-t has no real `--version`, it
+          # prints the banner and its usage on stderr and exits 1.
+          export LD_LIBRARY_PATH=$virtuoso/lib
+          "$virtuoso/bin/virtuoso-t" --version 2>&1 | grep -q 'Virtuoso Open Source'
+          "$virtuoso/bin/isql" -? 2>&1 | grep -q 'Interactive SQL'
+
+      - name: Make sure the container runtime is available and pull the image
+        if: matrix.system != 'native'
+        run: |
+          command -v ${{matrix.system}} || (sudo apt-get update && sudo apt-get install -y ${{matrix.system}})
+          ${{matrix.system}} --version
+          ${{matrix.system}} pull docker.io/openlink/virtuoso-opensource-7:latest
+
+      - name: End-to-end test on the imdb dataset (${{matrix.system}})
+        run: |
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p virtuoso-e2e && cd virtuoso-e2e
+          qeval virtuoso setup-config imdb --system ${{matrix.system}}
+          qeval virtuoso get-data
+          qeval virtuoso index
+
+          echo "Checking that the resource-usage log and plot were produced"
+          test -s imdb.index.resource-usage-log.tsv
+          test -f imdb.resource-usage-plot.png
+          test -s virtuoso.db
+
+          qeval virtuoso index-stats
+          qeval virtuoso start
+          qeval virtuoso status
+          qeval virtuoso query
+
+          # Remember how many triples this single-pass build ended up with,
+          # so that the incremental build in the next step can be compared
+          # against it. Counting the triples of imdb.ttl directly would not
+          # work, since Virtuoso also stores triples of its own.
+          qeval virtuoso query 'SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o }' \
+            --accept text/csv --no-time --log-level NO_LOG \
+            | grep -oE '[0-9]+' | tail -1 > "$GITHUB_WORKSPACE/full-build-count.txt"
+          echo "Triples after the single-pass build: $(cat "$GITHUB_WORKSPACE/full-build-count.txt")"
+
+          qeval virtuoso stop
+          ls -lh
+
+      - name: End-to-end test of --extend-existing-index (${{matrix.system}})
+        run: |
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p virtuoso-extend-e2e && cd virtuoso-extend-e2e
+          qeval virtuoso setup-config imdb --system ${{matrix.system}}
+
+          # Convert the imdb.ttl of the previous step to N-Triples with Apache
+          # Jena's riot (one triple per line) and split it into three parts of
+          # equal size.
+          docker run --rm -v "$(pwd)/../virtuoso-e2e":/data stain/jena \
+            riot --output=NT /data/imdb.ttl > imdb.nt
+          split -n l/3 -d --additional-suffix=.nt imdb.nt imdb.part
+          rm imdb.nt
+          wc -l imdb.part0*.nt
+          for part in imdb.part00.nt imdb.part01.nt imdb.part02.nt; do
+            test -s "$part"
+          done
+
+          # The first part builds a fresh index, the other two extend it.
+          qeval virtuoso index --input-files imdb.part00.nt
+          test -s virtuoso.db
+          usage_log_lines_after_first=$(wc -l < imdb.index.resource-usage-log.tsv)
+          plot_after_first=$(md5sum imdb.resource-usage-plot.png | cut -d' ' -f1)
+
+          # Loading into an existing virtuoso.db must be refused unless
+          # --extend-existing-index is given.
+          if qeval virtuoso index --input-files imdb.part01.nt; then
+            echo "index without --extend-existing-index should have failed"
+            exit 1
+          fi
+
+          qeval virtuoso index --input-files imdb.part01.nt --extend-existing-index
+          qeval virtuoso index --input-files imdb.part02.nt --extend-existing-index
+
+          # The resource-usage log is appended to when extending, so it must
+          # have grown beyond what the first run wrote.
+          echo "Checking that the resource-usage log covers all three runs"
+          test "$(wc -l < imdb.index.resource-usage-log.tsv)" -gt "$usage_log_lines_after_first"
+
+          # Re-rendered after every run, and three runs add the phase bands
+          # that a single-run plot does not have.
+          echo "Checking that the resource-usage plot was re-rendered"
+          test "$(md5sum imdb.resource-usage-plot.png | cut -d' ' -f1)" != "$plot_after_first"
+
+          # index-stats reports one "Index build" line per run, plus the total.
+          echo "Checking that index-stats knows about all three runs"
+          num_runs=$(qeval virtuoso index-stats 2>&1 | grep -c "Index build")
+          test "$num_runs" -eq 3
+
+          qeval virtuoso start
+          qeval virtuoso status
+          qeval virtuoso query
+
+          # Loading the three parts one after the other must give exactly the
+          # same triples as loading imdb.ttl in one go.
+          extend_build_count=$(qeval virtuoso query \
+            'SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o }' \
+            --accept text/csv --no-time --log-level NO_LOG \
+            | grep -oE '[0-9]+' | tail -1)
+          full_build_count=$(cat "$GITHUB_WORKSPACE/full-build-count.txt")
+          echo "Triples: $extend_build_count (incremental) vs $full_build_count (single pass)"
+          test "$extend_build_count" -gt 0
+          test "$extend_build_count" -eq "$full_build_count"
+
+          qeval virtuoso stop
+          ls -lh
+
+      - name: Show the Virtuoso logs on failure
+        if: failure()
+        # `|| true` so that a failure before these files exist does not hide
+        # the error from the step that actually failed.
+        run: |
+          for dir in virtuoso-e2e virtuoso-extend-e2e; do
+            test -d "$dir" || continue
+            echo "===== $dir ====="
+            tail -n 100 "$dir"/imdb.index-log.txt "$dir"/imdb.server-log.txt \
+              "$dir"/imdb.virtuoso.ini || true
+          done

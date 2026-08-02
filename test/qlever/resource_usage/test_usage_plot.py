@@ -231,6 +231,7 @@ def test_render_usage_plot_falls_back_to_old_tsv_name(tmp_path):
     args = SimpleNamespace(
         name="data",
         resource_usage_plot_max_points=500,
+        resource_usage_interval=1,
         stxxl_memory="",
         settings_json="{}",
         engine="qlever",

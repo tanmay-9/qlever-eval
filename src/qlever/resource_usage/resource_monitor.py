@@ -62,6 +62,26 @@ def sample_container(system: str, container: str) -> Sample:
         return Sample()
 
 
+def read_last_elapsed_s(log_path: Path) -> float | None:
+    """
+    Read the `elapsed_s` of the last sample of an existing usage log, so
+    that a further run can continue from it; 0.0 if the log has a header
+    but no samples yet. None if the log does not start with a header row,
+    in which case it holds nothing worth keeping and can be overwritten.
+    """
+    lines = log_path.read_text().splitlines()
+    if not lines or lines[0].split("\t")[0] != fields(Sample)[0].name:
+        return None
+    for line in reversed(lines[1:]):
+        elapsed_s = line.split("\t")[0]
+        if elapsed_s:
+            try:
+                return float(elapsed_s)
+            except ValueError:
+                continue
+    return 0.0
+
+
 class ResourceMonitor:
     """
     Monitor resource usage (memory, CPU) of an index-building
@@ -90,6 +110,7 @@ class ResourceMonitor:
         interval: float = 1.0,
         output_dir: Path | None = None,
         parent_pid: int | None = None,
+        append: bool = False,
     ):
         """
         Args:
@@ -105,6 +126,10 @@ class ResourceMonitor:
                         process. Defaults to the current process; pass a
                         different PID when the target re-parents away from
                         us.
+            append:     Add this run's samples to an existing usage log
+                        instead of overwriting it, continuing `elapsed_s`
+                        from its last row. For engines that build an index
+                        in several runs. A run that raises is rolled back.
         """
         self.dataset = dataset
         self.binary = binary
@@ -113,11 +138,17 @@ class ResourceMonitor:
         self.interval = interval
         self.output_dir = output_dir or Path.cwd()
         self.parent_pid = parent_pid
+        self.append = append
         self.peak_rss = 0
         self.worker_proc = None
         self.log_file = None
         self.stop_event = threading.Event()
         self.start_time = 0
+        # Set in `__enter__` when appending to an existing log: the
+        # `elapsed_s` to continue from, and the size the file had before
+        # this run, which `__exit__` truncates back to on failure.
+        self.elapsed_offset = 0.0
+        self.append_offset = None
 
     @classmethod
     def from_args(cls, args) -> ResourceMonitor:
@@ -156,7 +187,9 @@ class ResourceMonitor:
         """
         while not self.stop_event.is_set():
             sample = self.take_sample()
-            sample.elapsed_s = round(time.monotonic() - self.start_time, 1)
+            sample.elapsed_s = round(
+                self.elapsed_offset + time.monotonic() - self.start_time, 1
+            )
             if sample.rss is not None and self.log_file is not None:
                 self.peak_rss = max(self.peak_rss, sample.rss)
                 self.log_file.write(sample_to_tsv_row(sample))
@@ -164,13 +197,26 @@ class ResourceMonitor:
             self.stop_event.wait(self.interval)
 
     def __enter__(self):
-        """Open the TSV log, write the header, start sampling thread."""
+        """
+        Open the TSV log and start the sampling thread. Writes a header to
+        a fresh log; continues an existing one when `append` was set.
+        """
         self.log_path = (
             self.output_dir / f"{self.dataset}.index.resource-usage-log.tsv"
         )
-        self.log_file = open(self.log_path, "w")
-        header = "\t".join(f.name for f in fields(Sample)) + "\n"
-        self.log_file.write(header)
+        previous_elapsed_s = (
+            read_last_elapsed_s(self.log_path)
+            if self.append and self.log_path.exists()
+            else None
+        )
+        if previous_elapsed_s is None:
+            self.log_file = open(self.log_path, "w")
+            header = "\t".join(f.name for f in fields(Sample)) + "\n"
+            self.log_file.write(header)
+        else:
+            self.elapsed_offset = previous_elapsed_s
+            self.append_offset = self.log_path.stat().st_size
+            self.log_file = open(self.log_path, "a")
         self.log_file.flush()
         self.start_time = time.monotonic()
         self.thread = threading.Thread(target=self.run_loop, daemon=True)
@@ -178,10 +224,23 @@ class ResourceMonitor:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Stop sampling, close the log, report where it was saved."""
+        """
+        Stop sampling and close the log, reporting where it was saved.
+        When appending, a run that raised is rolled back: it completed no
+        index build, so its samples belong to no run and would stretch
+        `elapsed_s` beyond what the index log accounts for.
+        """
         self.stop_event.set()
         self.thread.join()
         self.log_file.close()
+        if exc_type is not None and self.append_offset is not None:
+            with open(self.log_path, "r+") as log_file:
+                log_file.truncate(self.append_offset)
+            log.warning(
+                "Discarded the resource-usage samples of the failed run "
+                f"from `{self.log_path.name}`"
+            )
+            return False
         if self.peak_rss > 0:
             log.info(
                 "Resource-usage log (RSS memory and CPU usage) saved to "

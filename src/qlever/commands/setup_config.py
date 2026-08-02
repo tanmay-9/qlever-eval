@@ -3,7 +3,7 @@ from __future__ import annotations
 from os import environ
 from pathlib import Path
 
-from qlever import util
+from qlever import script_name, util
 from qlever.command import QleverCommand
 from qlever.log import log
 
@@ -53,15 +53,15 @@ class SetupConfigCommand(QleverCommand):
         for section, arg_name in self.override_args:
             subparser.set_defaults(**{arg_name: None})
 
-    def check_qleverfile_exists(self) -> bool:
+    def check_qleverfile_exists(self, args) -> bool:
         """Return True if a Qleverfile already exists (and log an error)."""
         if Path("Qleverfile").exists():
             log.error("`Qleverfile` already exists in current directory")
             log.info("")
             log.info(
                 "If you want to create a new Qleverfile using "
-                "`qlever setup-config`, delete the existing Qleverfile "
-                "first"
+                f"`{script_name} {args.engine} setup-config`, delete the "
+                "existing Qleverfile first"
             )
             return True
         return False
@@ -112,7 +112,7 @@ class SetupConfigCommand(QleverCommand):
         if args.show:
             return True
 
-        if self.check_qleverfile_exists():
+        if self.check_qleverfile_exists(args):
             return False
 
         # Copy the Qleverfile to the current directory, with the updates
