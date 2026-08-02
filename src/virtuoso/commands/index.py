@@ -5,6 +5,8 @@ import time
 from contextlib import nullcontext
 from pathlib import Path
 
+import psutil
+
 import qlever.util as util
 from qlever import script_name
 from qlever.command import QleverCommand
@@ -27,8 +29,14 @@ from virtuoso.util import (
 NUM_BUFFERS_PER_GB = 85_000
 MAX_DIRTY_BUFFERS_PER_GB = 65_000
 
-# How long to wait for the server started for loading to come online.
-SERVER_STARTUP_TIMEOUT_S = 60
+# Give up if the server is still not online after this long.
+SERVER_STARTUP_TIMEOUT_S = 600
+
+# virtuoso.lck is not written immediately after the server starts.
+LCK_GRACE_PERIOD_S = 10
+
+# How often to print that we are still waiting.
+HEARTBEAT_INTERVAL_S = 30
 
 
 def find_virtuoso_pid(lck_path: Path) -> int | None:
@@ -43,6 +51,20 @@ def find_virtuoso_pid(lck_path: Path) -> int | None:
         return None
     match = re.search(r"VIRT_PID\s*=\s*(\d+)", content)
     return int(match.group(1)) if match else None
+
+
+def index_server_running(args, started_at: float) -> bool:
+    """
+    Whether the server started for loading is still there. Natively the
+    PID comes from virtuoso.lck, which the server writes itself, so a
+    missing file shortly after the start still counts as starting up.
+    """
+    if args.system in Containerize.supported_systems():
+        return Containerize().is_running(args.system, args.index_container)
+    pid = find_virtuoso_pid(Path("virtuoso.lck"))
+    if pid is None:
+        return time.time() - started_at < LCK_GRACE_PERIOD_S
+    return psutil.pid_exists(pid)
 
 
 def index_ini_config(args) -> dict[str, dict[str, tuple[str, bool]]]:
@@ -329,18 +351,32 @@ class IndexCommand(QleverCommand):
             server_started = True
             log.info("Waiting for Virtuoso server to be online...")
             start_time = time.time()
+            next_heartbeat = HEARTBEAT_INTERVAL_S
             log_file = Path(f"{args.name}.index-log.txt")
             # Wait until the Virtuoso server is online, and start tailing
             # the index log file as soon as it exists (note that the `exec`
             # is important to make sure that the tail process is killed and
             # not just the bash process).
             while not util.is_server_alive(endpoint_url):
-                if time.time() - start_time > SERVER_STARTUP_TIMEOUT_S:
+                if not index_server_running(args, start_time):
+                    log.error("Virtuoso exited before coming online")
+                    # A dead container still has to be removed.
+                    if args.system not in Containerize.supported_systems():
+                        server_started = False
+                    return False
+                elapsed_s = time.time() - start_time
+                if elapsed_s > SERVER_STARTUP_TIMEOUT_S:
                     log.error(
                         "Timed out waiting for Virtuoso to be online after "
                         f"{SERVER_STARTUP_TIMEOUT_S} seconds."
                     )
                     return False
+                if elapsed_s >= next_heartbeat:
+                    log.info(
+                        f"Virtuoso is still starting ({int(elapsed_s)}s "
+                        f"elapsed, giving up at {SERVER_STARTUP_TIMEOUT_S}s)"
+                    )
+                    next_heartbeat += HEARTBEAT_INTERVAL_S
                 if log_proc is None and log_file.exists():
                     log_proc = util.run_command(
                         f"exec tail -n +1 -f {log_file}",

@@ -76,10 +76,9 @@ jobs:
           qeval virtuoso get-data
           qeval virtuoso index
 
-          # Virtuoso does not render a resource-usage plot yet, so unlike the
-          # other engines only the log is checked here.
-          echo "Checking that the resource-usage log and the index db exist"
+          echo "Checking that the resource-usage log and plot were produced"
           test -s imdb.index.resource-usage-log.tsv
+          test -f imdb.resource-usage-plot.png
           test -s virtuoso.db
 
           qeval virtuoso index-stats
@@ -121,6 +120,7 @@ jobs:
           qeval virtuoso index --input-files imdb.part00.nt
           test -s virtuoso.db
           usage_log_lines_after_first=$(wc -l < imdb.index.resource-usage-log.tsv)
+          plot_after_first=$(md5sum imdb.resource-usage-plot.png | cut -d' ' -f1)
 
           # Loading into an existing virtuoso.db must be refused unless
           # --extend-existing-index is given.
@@ -136,6 +136,11 @@ jobs:
           # have grown beyond what the first run wrote.
           echo "Checking that the resource-usage log covers all three runs"
           test "$(wc -l < imdb.index.resource-usage-log.tsv)" -gt "$usage_log_lines_after_first"
+
+          # Re-rendered after every run, and three runs add the phase bands
+          # that a single-run plot does not have.
+          echo "Checking that the resource-usage plot was re-rendered"
+          test "$(md5sum imdb.resource-usage-plot.png | cut -d' ' -f1)" != "$plot_after_first"
 
           # index-stats reports one "Index build" line per run, plus the total.
           echo "Checking that index-stats knows about all three runs"
