@@ -66,13 +66,10 @@ def read_last_elapsed_s(log_path: Path) -> float | None:
     """
     Read the `elapsed_s` of the last sample of an existing usage log, so
     that a further run can continue from it; 0.0 if the log has a header
-    but no samples yet. None if the file cannot be read or does not start
-    with a header row, in which case it must not be appended to.
+    but no samples yet. None if the log does not start with a header row,
+    in which case it holds nothing worth keeping and can be overwritten.
     """
-    try:
-        lines = log_path.read_text().splitlines()
-    except OSError:
-        return None
+    lines = log_path.read_text().splitlines()
     if not lines or lines[0].split("\t")[0] != fields(Sample)[0].name:
         return None
     for line in reversed(lines[1:]):
@@ -208,7 +205,9 @@ class ResourceMonitor:
             self.output_dir / f"{self.dataset}.index.resource-usage-log.tsv"
         )
         previous_elapsed_s = (
-            read_last_elapsed_s(self.log_path) if self.append else None
+            read_last_elapsed_s(self.log_path)
+            if self.append and self.log_path.exists()
+            else None
         )
         if previous_elapsed_s is None:
             self.log_file = open(self.log_path, "w")

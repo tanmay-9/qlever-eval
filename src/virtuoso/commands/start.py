@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from qlever import script_name
@@ -17,6 +16,7 @@ from qlever.util import (
 )
 from virtuoso.commands.stop import StopCommand
 from virtuoso.util import (
+    check_virtuoso_binary,
     log_virtuoso_ini_changes,
     resolve_virtuoso_ini,
     update_virtuoso_ini,
@@ -137,7 +137,7 @@ class StartCommand(QleverCommand):
             start_cmd += " -f"
 
         if args.show and not virtuoso_ini_exists(args):
-            self.show(virtuoso_ini_missing_msg(args))
+            log.warning(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = server_ini_config(args)
         if virtuoso_ini_exists(args):
@@ -149,16 +149,9 @@ class StartCommand(QleverCommand):
 
         endpoint_url = f"http://{args.host_name}:{args.port}/sparql"
 
-        # When running natively, check if the binary exists and works.
-        # We use shutil.which instead of util.binary_exists because
-        # virtuoso-t --help writes to stderr instead of stdout
+        # When running natively, check that the binary exists and runs.
         if args.system not in Containerize.supported_systems():
-            if not shutil.which(args.server_binary):
-                log.error(
-                    f'Running "{args.server_binary}" failed, '
-                    "set `--server-binary` to a different binary or "
-                    "set `--system to a container system`"
-                )
+            if not check_virtuoso_binary(args.server_binary, "server"):
                 return False
 
         # Check if index db virtuoso.db present in cwd

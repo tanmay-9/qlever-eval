@@ -39,8 +39,8 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
         default=1,
         choices=range(1, 11),
         help=(
-            "It is recommended a maximum of no cores / 2.5, to optimally "
-            "parallelize the data load and hence maximize load speed."
+            "Number of rdf_loader_run() processes loading the input files "
+            "in parallel (default: 1). At most cores / 2.5 is recommended."
         ),
     )
     index_args["memory_for_buffers"] = arg(
@@ -48,9 +48,9 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
         type=parse_memory,
         default="4G",
         help=(
-            "Amount of free system memory to allocate for Virtuoso buffers, "
-            "for example 8G. Virtuoso will use between 2/3 - 3/5 of system "
-            "memory and set NumberOfBuffers and MaxDirtyBuffers accordingly."
+            "Memory for Virtuoso's buffer pool, for example 8G. "
+            "NumberOfBuffers and MaxDirtyBuffers are derived from it. "
+            "Virtuoso recommends about 2/3 of system memory."
         ),
     )
 

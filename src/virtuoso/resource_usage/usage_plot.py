@@ -4,10 +4,11 @@ import re
 from pathlib import Path
 
 from qlever.resource_usage.usage_plot import (
-    UsagePlot as BaseUsagePlot,
+    SUBTITLE_SEPARATOR,
+    bands_from_durations,
 )
 from qlever.resource_usage.usage_plot import (
-    bands_from_durations,
+    UsagePlot as BaseUsagePlot,
 )
 from virtuoso.commands.index_stats import parse_index_runs
 
@@ -88,4 +89,4 @@ class UsagePlot(BaseUsagePlot):
             parts.append(f"loaders = {' · '.join(loaders)}")
         if len(runs) > 1:
             parts.append(f"{len(runs)} runs")
-        return "   |   ".join(parts) if parts else None
+        return SUBTITLE_SEPARATOR.join(parts) if parts else None

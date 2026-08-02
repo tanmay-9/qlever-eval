@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -16,6 +15,7 @@ from virtuoso.commands.index_stats import write_settings_marker
 from virtuoso.commands.stop import StopCommand
 from virtuoso.resource_usage.usage_plot import UsagePlot
 from virtuoso.util import (
+    check_virtuoso_binary,
     log_virtuoso_ini_changes,
     resolve_virtuoso_ini,
     update_virtuoso_ini,
@@ -212,7 +212,7 @@ class IndexCommand(QleverCommand):
             run_cmd_to_show = run_cmd
 
         if args.show and not virtuoso_ini_exists(args):
-            self.show(virtuoso_ini_missing_msg(args))
+            log.warning(virtuoso_ini_missing_msg(args))
 
         virtuoso_ini_config_dict = index_ini_config(args)
         if virtuoso_ini_exists(args):
@@ -237,19 +237,12 @@ class IndexCommand(QleverCommand):
                 )
                 return False
         else:
-            # When running natively, check if the binary exists and works.
-            # We use shutil.which instead of util.binary_exists because
-            # isql --help writes to stderr instead of stdout
-            for binary, ps in [
+            # When running natively, check that the binaries exist and run.
+            for binary, kind in [
                 (args.index_binary, "index"),
                 (args.server_binary, "server"),
             ]:
-                if not shutil.which(binary):
-                    log.error(
-                        f'Running "{binary}" failed, '
-                        f"set `--{ps}-binary` to a different binary or "
-                        "set `--system to a container system`"
-                    )
+                if not check_virtuoso_binary(binary, kind):
                     return False
 
         # Check if previous index exists and user is not trying to extend it
@@ -264,6 +257,17 @@ class IndexCommand(QleverCommand):
                 "option not passed!"
             )
             return False
+
+        # There is nothing to extend, so this is a fresh build. Keeping the
+        # logs of the previous index would report runs of a database that is
+        # no longer there.
+        if args.extend_existing_index and not Path("virtuoso.db").exists():
+            log.warning(
+                "No virtuoso.db found in current directory, so there is no "
+                "index to extend; building a fresh index and starting the "
+                "index and resource-usage logs over"
+            )
+            args.extend_existing_index = False
 
         # Loading needs its own server, so the database must not be served
         # by another one. This is most likely to happen with
@@ -307,6 +311,9 @@ class IndexCommand(QleverCommand):
 
         monitored = False
 
+        # If launching the server failed, there is nothing to stop.
+        server_started = False
+
         # The process that tails the index log, terminated in the `finally`
         # below so that it does not outlive a failed index.
         log_proc = None
@@ -319,6 +326,7 @@ class IndexCommand(QleverCommand):
                 Path(f"{args.name}.index-log.txt").unlink(missing_ok=True)
             # Run the index container in detached mode
             util.run_command(start_cmd)
+            server_started = True
             log.info("Waiting for Virtuoso server to be online...")
             start_time = time.time()
             log_file = Path(f"{args.name}.index-log.txt")
@@ -397,7 +405,8 @@ class IndexCommand(QleverCommand):
             return False
         finally:
             # Before the log tail, so that the shutdown lines still show.
-            stop_server()
+            if server_started:
+                stop_server()
             if log_proc is not None:
                 log_proc.terminate()
 

@@ -1,10 +1,39 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import qlever.util as util
 from qlever import script_name
 from qlever.log import log
+
+
+def check_virtuoso_binary(binary: str, kind: str) -> bool:
+    """
+    Check that `binary` is installed and can be executed. `util.binary_exists`
+    is not usable for the Virtuoso binaries: `--help` exits non-zero for both,
+    so a working binary would be reported as missing. Exit code 127 is the
+    shell's "not found or cannot execute", which also covers a binary that is
+    on PATH but whose shared libraries are missing.
+    """
+    try:
+        result = subprocess.run(
+            f"{binary} --help",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return True
+    if result.returncode != 127:
+        return True
+    log.error(f'Running "{binary}" failed: {result.stderr.strip()}')
+    log.info(
+        f"Set `--{kind}-binary` to a different binary or set `--system` "
+        "to a container system"
+    )
+    return False
 
 
 def virtuoso_ini_missing_msg(args) -> str:
