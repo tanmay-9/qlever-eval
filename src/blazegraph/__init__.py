@@ -10,3 +10,11 @@ BLAZEGRAPH_JAR_URL = (
     "https://github.com/blazegraph/database/releases/download/"
     "BLAZEGRAPH_2_1_6_RC/blazegraph.jar"
 )
+
+# The jar inside the image, downloaded by the Dockerfile to its `WORKDIR`.
+CONTAINER_JAR_PATH = "/opt/blazegraph.jar"
+
+# The loader and journal settings `setup-config` copies out of this package,
+# and the journal file that RWStore.properties points Blazegraph at.
+PROPERTIES_FILE = "RWStore.properties"
+JOURNAL_FILE = "blazegraph.jnl"

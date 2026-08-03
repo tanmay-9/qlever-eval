@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from blazegraph import JOURNAL_FILE
 from oxigraph.commands.index_stats import (
     IndexStatsCommand as OxigraphIndexStatsCommand,
 )
@@ -19,7 +20,7 @@ class IndexStatsCommand(OxigraphIndexStatsCommand):
 
     def index_size_patterns(self, args) -> list[str]:
         """The index files to add up for the space report."""
-        return ["blazegraph.jnl"]
+        return [JOURNAL_FILE]
 
     def parse_index_durations(
         self, log_file_name: str | Path

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from configparser import RawConfigParser
 from importlib.resources import files
 from pathlib import Path
 
+from blazegraph import PROPERTIES_FILE
 from oxigraph.commands.setup_config import (
     SetupConfigCommand as OxigraphSetupConfigCommand,
 )
@@ -49,16 +49,9 @@ class SetupConfigCommand(OxigraphSetupConfigCommand):
         if not qleverfile_successfully_created:
             return False
 
-        # From the template, not the Qleverfile, which does not exist yet
-        # with `--show`. The two hold the same name, since `[data]` is
-        # copied verbatim.
-        template = RawConfigParser()
-        template.optionxform = str
-        template.read(self.qleverfiles_path / f"Qleverfile.{args.config_name}")
-        name = template.get("data", "NAME")
-
+        name = self.dataset_name(args)
         files_to_copy = {
-            "RWStore.properties": Path("RWStore.properties"),
+            PROPERTIES_FILE: Path(PROPERTIES_FILE),
             "web.xml": Path(f"{name}.web.xml"),
         }
 

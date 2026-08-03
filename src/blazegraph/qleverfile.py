@@ -9,6 +9,19 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
     def arg(*args, **kwargs):
         return (args, kwargs)
 
+    def jar_arg():
+        """The same jar is needed for indexing and for serving."""
+        return arg(
+            "--blazegraph-jar",
+            type=str,
+            default="blazegraph.jar",
+            help=(
+                "Path to the blazegraph.jar file (default: blazegraph.jar) "
+                "(this requires that you have blazegraph.jar downloaded on "
+                "your machine)"
+            ),
+        )
+
     index_args = all_args["index"]
     server_args = all_args["server"]
 
@@ -21,24 +34,15 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
             "(this requires that you have Java installed on your machine)"
         ),
     )
-    index_args["blazegraph_jar"] = arg(
-        "--blazegraph-jar",
-        type=str,
-        default="blazegraph.jar",
-        help=(
-            "Path to the blazegraph.jar file (default: blazegraph.jar) "
-            "(this requires that you have blazegraph.jar downloaded on "
-            "your machine)"
-        ),
-    )
+    index_args["blazegraph_jar"] = jar_arg()
     index_args["jvm_args"] = arg(
         "--jvm-args",
         type=str,
         default="-Xmx4G",
         help=(
-            "Arguments for the JVM. Do not set to all available RAM. "
-            "Increasing is only necessary for large numbers of long "
-            "literals."
+            "Arguments for the JVM, for example -Xmx8G. Do not set to all "
+            "available RAM. Increasing is only necessary for large numbers "
+            "of long literals."
         ),
     )
     index_args["extra_args"] = arg(
@@ -62,21 +66,15 @@ def qleverfile_args(all_args: dict[str, dict[str, tuple]]) -> None:
             "(this requires that you have Java installed on your machine)"
         ),
     )
-    server_args["blazegraph_jar"] = arg(
-        "--blazegraph-jar",
-        type=str,
-        default="blazegraph.jar",
-        help=(
-            "Path to the blazegraph.jar file (default: blazegraph.jar) "
-            "(this requires that you have blazegraph.jar downloaded on "
-            "your machine)"
-        ),
-    )
+    server_args["blazegraph_jar"] = jar_arg()
     server_args["jvm_args"] = arg(
         "--jvm-args",
         type=str,
         default="-Xmx4G",
-        help="Arguments for the JVM",
+        help=(
+            "Arguments for the JVM, for example -Xmx8G. Do not set to all "
+            "available RAM."
+        ),
     )
     server_args["read_only"] = arg(
         "--read-only",

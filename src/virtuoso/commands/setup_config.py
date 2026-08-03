@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from configparser import RawConfigParser
 from pathlib import Path
 
 from termcolor import colored
@@ -59,13 +58,7 @@ class SetupConfigCommand(OxigraphSetupConfigCommand):
         if not qleverfile_successfully_created:
             return False
 
-        # From the template, not the Qleverfile, which does not exist yet
-        # with `--show`. The two hold the same name, since `[data]` is
-        # copied verbatim.
-        template = RawConfigParser()
-        template.optionxform = str
-        template.read(self.qleverfiles_path / f"Qleverfile.{args.config_name}")
-        ini_path = Path(f"{template.get('data', 'NAME')}.virtuoso.ini")
+        ini_path = Path(f"{self.dataset_name(args)}.virtuoso.ini")
 
         curl_cmd = f"curl -fL --retry 3 -o {ini_path} {self.VIRTUOSO_INI_URL}"
         log.info("")

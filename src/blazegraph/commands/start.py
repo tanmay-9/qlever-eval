@@ -3,7 +3,12 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from blazegraph import BLAZEGRAPH_JAR_URL
+from blazegraph import (
+    BLAZEGRAPH_JAR_URL,
+    CONTAINER_JAR_PATH,
+    JOURNAL_FILE,
+    PROPERTIES_FILE,
+)
 from blazegraph.commands.stop import StopCommand
 from qlever import script_name
 from qlever.command import QleverCommand
@@ -37,19 +42,20 @@ def wrap_cmd_in_container(args, cmd: str) -> str:
     )
 
 
-def overwrite_web_xml(
+def update_web_xml(
     xml_file_path: Path, timeout_ms: int, read_only: bool
-) -> None:
+) -> list[str]:
     """
     Set the queryTimeout and readOnly context-params in web.xml, which is
-    the only place Blazegraph takes them from.
+    the only place Blazegraph takes them from. Returns the params that the
+    file does not have and that hence could not be set.
     """
     new_values = {
         "queryTimeout": str(timeout_ms),
         "readOnly": str(read_only).lower(),
     }
     ns_uri = "http://java.sun.com/xml/ns/javaee"
-    namespace = {"ns": "http://java.sun.com/xml/ns/javaee"}
+    namespace = {"ns": ns_uri}
 
     # Register the default namespace to avoid ns0 prefixes
     ET.register_namespace("", ns_uri)
@@ -60,14 +66,16 @@ def overwrite_web_xml(
     root = tree.getroot()
 
     # Find and update values
+    updated = []
     for context_param in root.findall("ns:context-param", namespace):
         param_name = context_param.find("ns:param-name", namespace)
         if param_name is not None and param_name.text in new_values:
             param_value = context_param.find("ns:param-value", namespace)
             if param_value is not None:
                 param_value.text = new_values[param_name.text]
+                updated.append(param_name.text)
     tree.write(xml_file_path, encoding="UTF-8", xml_declaration=True)
-    log.info(f"Successfully updated {xml_file_path.name}.")
+    return [name for name in new_values if name not in updated]
 
 
 class StartCommand(QleverCommand):
@@ -118,16 +126,14 @@ class StartCommand(QleverCommand):
 
     def execute(self, args) -> bool:
         containerized = args.system in Containerize.supported_systems()
-        jar_path = (
-            "/opt/blazegraph.jar" if containerized else args.blazegraph_jar
-        )
+        jar_path = CONTAINER_JAR_PATH if containerized else args.blazegraph_jar
         web_xml = Path(f"{args.name}.web.xml")
 
         # `-jar` has to come last: Java passes everything after it to the
         # program, and `stop` matches the jar at the end of the command.
         start_cmd = (
             f"{args.server_binary} -server {args.jvm_args} "
-            f"-Dbigdata.propertyFile=RWStore.properties "
+            f"-Dbigdata.propertyFile={PROPERTIES_FILE} "
             f"-Djetty.overrideWebXml={web_xml} "
             f"-Djetty.port={args.port}"
         )
@@ -161,11 +167,11 @@ class StartCommand(QleverCommand):
                 )
                 return False
 
-        if not Path("blazegraph.jnl").exists():
+        if not Path(JOURNAL_FILE).exists():
             log.error(f"No Blazegraph journal for {args.name} found!\n")
             log.info(
                 f"Did you call `{script_name} {args.engine} index`? If you "
-                "did, check if blazegraph.jnl is present in the current "
+                f"did, check if {JOURNAL_FILE} is present in the current "
                 "working directory"
             )
             return False
@@ -190,14 +196,22 @@ class StartCommand(QleverCommand):
             return False
 
         try:
-            overwrite_web_xml(
+            missing_params = update_web_xml(
                 web_xml, int(args.timeout[:-1]) * 1000, args.read_only == "yes"
             )
         except Exception as e:
             log.error(
-                f"Overwriting {web_xml} with Qleverfile parameters failed: {e}"
+                f"Updating {web_xml} with Qleverfile parameters failed: {e}"
             )
             return False
+        if missing_params:
+            log.warning(
+                f"Could not set {' and '.join(missing_params)} in {web_xml}: "
+                "no such context-param. Blazegraph will use its own default "
+                "instead of the value from the Qleverfile"
+            )
+        else:
+            log.info(f"Successfully updated {web_xml.name}.")
 
         # Remove old log file so that tail starts clean.
         log_file = Path(f"{args.name}.server-log.txt")

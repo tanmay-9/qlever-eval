@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from blazegraph import BLAZEGRAPH_JAR_URL
+from blazegraph import (
+    BLAZEGRAPH_JAR_URL,
+    CONTAINER_JAR_PATH,
+    JOURNAL_FILE,
+    PROPERTIES_FILE,
+)
 from blazegraph.resource_usage.usage_plot import UsagePlot
 from qlever.command import QleverCommand
 from qlever.containerize import Containerize
@@ -52,7 +57,7 @@ class IndexCommand(QleverCommand):
 
     def relevant_qleverfile_arguments(self) -> dict[str, list[str]]:
         return {
-            "data": ["name", "format"],
+            "data": ["name"],
             "index": [
                 "input_files",
                 "index_binary",
@@ -98,9 +103,7 @@ class IndexCommand(QleverCommand):
 
         # In a container the jar is the one baked into the image by the
         # Dockerfile, which downloads it to its /opt working directory.
-        jar_path = (
-            "/opt/blazegraph.jar" if containerized else args.blazegraph_jar
-        )
+        jar_path = CONTAINER_JAR_PATH if containerized else args.blazegraph_jar
 
         index_cmd = (
             f"{args.index_binary} {args.jvm_args} -cp {jar_path} "
@@ -108,7 +111,7 @@ class IndexCommand(QleverCommand):
         )
         if args.extra_args:
             index_cmd += f" {args.extra_args}"
-        index_cmd += f" RWStore.properties {input_files}"
+        index_cmd += f" {PROPERTIES_FILE} {input_files}"
         # DataLoader logs through log4j, which writes to stderr, so both
         # streams have to be captured for the log to be complete.
         index_cmd += f" 2>&1 | tee {args.name}.index-log.txt"
@@ -165,10 +168,10 @@ class IndexCommand(QleverCommand):
                 )
                 return False
 
-        index_jnl = Path("blazegraph.jnl")
+        index_jnl = Path(JOURNAL_FILE)
         if index_jnl.exists():
             log.error(
-                "Blazegraph journal blazegraph.jnl found in current working "
+                f"Blazegraph journal {JOURNAL_FILE} found in current working "
                 "directory which shows presence of a previous index\n"
             )
             log.info("Aborting the index operation...")
