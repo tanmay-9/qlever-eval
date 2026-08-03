@@ -1,0 +1,79 @@
+name: End-to-end test for blazegraph
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  blazegraph-end-to-end-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [native, docker, podman]
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install blazegraph (the qeval CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # Only for the native path: the container image ships its own JDK and
+      # its own copy of the jar, so needing neither here is part of the test.
+      - name: Set up Java
+        if: matrix.system == 'native'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Download the blazegraph jar
+        if: matrix.system == 'native'
+        run: |
+          mkdir -p blazegraph-e2e
+          curl -sL -o blazegraph-e2e/blazegraph.jar \
+            https://github.com/blazegraph/database/releases/download/BLAZEGRAPH_2_1_6_RC/blazegraph.jar
+          ls -lh blazegraph-e2e/blazegraph.jar
+
+      # No image to pull: `qeval blazegraph index` builds it from the
+      # Dockerfile in src/blazegraph, which downloads the jar itself.
+      - name: Make sure the container runtime is available
+        if: matrix.system != 'native'
+        run: |
+          command -v ${{matrix.system}} || (sudo apt-get update && sudo apt-get install -y ${{matrix.system}})
+          ${{matrix.system}} --version
+
+      - name: End-to-end test on the imdb dataset (${{matrix.system}})
+        run: |
+          export QEVAL_ARGCOMPLETE_ENABLED=1
+          mkdir -p blazegraph-e2e && cd blazegraph-e2e
+          # 12G of the runner's 16G for the load; the 4G default is tight for imdb's 41M triples.
+          qeval blazegraph setup-config imdb --system ${{matrix.system}} --total-index-memory 12G
+          qeval blazegraph get-data
+          qeval blazegraph index
+
+          echo "Checking that the resource-usage log and plot were produced"
+          test -s imdb.index.resource-usage-log.tsv
+          test -f imdb.resource-usage-plot.png
+
+          qeval blazegraph index-stats
+          qeval blazegraph start
+          qeval blazegraph status
+          qeval blazegraph query
+          qeval blazegraph stop
+          ls -lh

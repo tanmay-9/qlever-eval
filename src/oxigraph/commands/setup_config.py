@@ -45,6 +45,18 @@ class SetupConfigCommand(QleverSetupConfigCommand):
                 for option, value in option_dict.items():
                     qleverfile_parser.set(section, option, value)
 
+    def dataset_name(self, args) -> str:
+        """
+        The dataset's NAME, from the template rather than the Qleverfile,
+        which does not exist yet with `--show`.
+        """
+        template_path = (
+            self.qleverfiles_path / f"Qleverfile.{args.config_name}"
+        )
+        return Qleverfile.filter(template_path, self.FILTER_CRITERIA).get(
+            "data", "NAME"
+        )
+
     def execute(self, args) -> bool:
         # Construct the command line and show it.
         template_path = (

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from oxigraph.commands.index_stats import parse_index_durations
+from oxigraph.commands.index_stats import IndexStatsCommand
 from qlever.containerize import Containerize
 from qlever.resource_usage.usage_plot import (
     UsagePlot as BaseUsagePlot,
@@ -20,7 +20,9 @@ class UsagePlot(BaseUsagePlot):
         """Shade the load and optimize phases. The log has no timestamps,
         so the phases are assumed to run back to back from the build
         start."""
-        return bands_from_durations(parse_index_durations(self.log_path))
+        return bands_from_durations(
+            IndexStatsCommand().parse_index_durations(self.log_path)
+        )
 
     def subtitle(self) -> str | None:
         """Assemble a 'version | read-only' line from the index args."""

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qlever-eval"
 description = "Command-line tool from the QLever team for setting up and evaluating graph databases"
-version = "0.4.0"
+version = "0.5.0"
 authors = [
     { name = "Tanmay Garg", email = "gargt@cs.uni-freiburg.de" }
 ]
@@ -36,7 +36,7 @@ bugtracker = "https://github.com/ad-freiburg/qlever/issues"
 "qeval" = "qlever.qlever_main:main"
 
 [tool.setuptools]
-package-data = { "qlever" = ["Qleverfiles/*", "evaluation/www/*"] }
+package-data = { "qlever" = ["Qleverfiles/*", "evaluation/www/*"], "blazegraph" = ["Dockerfile", "RWStore.properties", "web.xml"] }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
