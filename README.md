@@ -18,6 +18,8 @@ mirrors the `qeval qlever` command-line interface:
   [MillenniumDB](https://github.com/MillenniumDB/MillenniumDB)
 - `qeval virtuoso` for
   [Virtuoso](https://github.com/openlink/virtuoso-opensource)
+- `qeval blazegraph` for
+  [Blazegraph](https://github.com/blazegraph/database)
 
 All of them speak
 [RDF](https://www.w3.org/TR/rdf11-concepts/) and
