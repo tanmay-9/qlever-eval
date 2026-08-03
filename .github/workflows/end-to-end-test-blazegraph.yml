@@ -62,8 +62,8 @@ jobs:
         run: |
           export QEVAL_ARGCOMPLETE_ENABLED=1
           mkdir -p blazegraph-e2e && cd blazegraph-e2e
-          # 8G of the runner's 16G for the load; the 4G default is tight for imdb's 41M triples.
-          qeval blazegraph setup-config imdb --system ${{matrix.system}} --total-index-memory 8G
+          # 12G of the runner's 16G for the load; the 4G default is tight for imdb's 41M triples.
+          qeval blazegraph setup-config imdb --system ${{matrix.system}} --total-index-memory 12G
           qeval blazegraph get-data
           qeval blazegraph index
 
