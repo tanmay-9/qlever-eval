@@ -5,18 +5,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from oxigraph.commands.index_stats import (
+    IndexStatsCommand as OxigraphIndexStatsCommand,
+)
 from qlever import script_name
 from qlever.commands.index_stats import (
-    IndexStatsCommand as QleverIndexStatsCommand,
-)
-from qlever.commands.index_stats import (
-    get_size_unit,
-    get_size_unit_factor,
     get_time_unit,
     get_time_unit_factor,
 )
 from qlever.log import log
-from qlever.util import get_total_file_size
 
 # Line that `index` writes to the log before starting the server, holding
 # the settings of the run that follows: "qeval: NumberOfBuffers=340000 ...".
@@ -151,10 +148,17 @@ def parse_index_runs(log_file_name: str | Path) -> list[IndexRun]:
     return runs
 
 
-class IndexStatsCommand(QleverIndexStatsCommand):
+class IndexStatsCommand(OxigraphIndexStatsCommand):
     """
-    Show index build time and disk space for a Virtuoso index.
+    Show how long the index build took and how much space the index uses,
+    for a Virtuoso index. Unlike the other engines, the index log is
+    timestamped and can hold several runs, so the times are reported per
+    run rather than per phase.
     """
+
+    def index_size_patterns(self, args) -> list[str]:
+        """The index files to add up for the space report."""
+        return ["virtuoso.db"]
 
     def execute_time(
         self, args, log_file_name: str
@@ -184,16 +188,3 @@ class IndexStatsCommand(QleverIndexStatsCommand):
         stats["TOTAL time"] = (total_seconds / unit_factor, time_unit)
 
         return stats
-
-    def execute_space(self, args) -> dict[str, tuple[float, str]]:
-        """
-        Return the space used by the index (virtuoso.db) along with the unit.
-        """
-        index_size = get_total_file_size(["virtuoso.db"])
-
-        size_unit = get_size_unit(args.size_unit, index_size)
-        unit_factor = get_size_unit_factor(size_unit)
-
-        index_size /= unit_factor
-
-        return {"TOTAL size": (index_size, size_unit)}

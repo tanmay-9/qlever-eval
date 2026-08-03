@@ -18,69 +18,71 @@ from qlever.log import log
 PHASE_LABELS = ["Load time", "Optimize time", "TOTAL time"]
 
 
-def parse_index_durations(log_file_name: str | Path) -> dict[str, float]:
-    """
-    Parse an Oxigraph index log and return the duration in seconds of each
-    phase, keyed by phase label and in log order. The durations are read
-    from the lines the index command appends to the log. Returns {} on
-    error or if no phase was logged.
-    """
-    try:
-        # The times are always near the end of the log.
-        log_text = util.run_command(
-            f"tail {log_file_name}", return_output=True
-        )
-    except Exception as e:
-        log.error(f"Problem reading index log file {log_file_name}: {e}")
-        return {}
-
-    durations = {}
-    for label in PHASE_LABELS:
-        match = re.search(rf"{re.escape(label)}:\s*(\d+)s", log_text)
-        if match:
-            durations[label] = float(match.group(1))
-    return durations
-
-
 class IndexStatsCommand(QleverIndexStatsCommand):
     """
-    Show index build time and disk space usage for an Oxigraph dataset.
-    Time is read from the "TOTAL time" line appended to the index log
-    by the index command; space is the sum of all .sst files.
+    Show how long the index build took and how much space the index uses,
+    for an Oxigraph dataset.
+
+    This is also the base class for the other new engines, which all read
+    the times from their index log rather than from timestamps the way
+    QLever does. They override the two methods below; the defaults here
+    are Oxigraph's own, as with `DEFAULT_REGEX` in `stop.py`.
     """
+
+    def index_size_patterns(self, args) -> list[str]:
+        """The index files to add up for the space report."""
+        return [f"{args.name}_index/*.sst"]
+
+    def parse_index_durations(
+        self, log_file_name: str | Path
+    ) -> dict[str, float]:
+        """
+        How long each phase of the build took, in seconds, in the order
+        they should be shown. Empty if the log cannot be read.
+
+        A build with no optimize step reports only its total, because then
+        loading is the whole build rather than one phase of it.
+        """
+        try:
+            # The times are always near the end of the log.
+            log_text = util.run_command(
+                f"tail {log_file_name}", return_output=True
+            )
+        except Exception as e:
+            log.error(f"Problem reading index log file {log_file_name}: {e}")
+            return {}
+
+        durations = {}
+        for label in PHASE_LABELS:
+            match = re.search(rf"{re.escape(label)}:\s*(\d+)s", log_text)
+            if match:
+                durations[label] = float(match.group(1))
+        if "Optimize time" not in durations:
+            durations.pop("Load time", None)
+        return durations
 
     def execute_time(
         self, args, log_file_name: str
     ) -> dict[str, tuple[float | None, str]]:
         """
-        Show the duration of each phase found in the Oxigraph index log,
-        all converted to a time unit chosen for the total time.
+        Show how long each phase took, all in the same unit, picked to
+        suit the longest phase.
         """
-        raw_seconds = parse_index_durations(log_file_name)
-        if not raw_seconds:
+        durations = self.parse_index_durations(log_file_name)
+        if not durations:
             return {}
 
-        # Pick a time unit based on the total time.
-        total_s = raw_seconds.get("TOTAL time")
-        time_unit = get_time_unit(args.time_unit, total_s)
+        time_unit = get_time_unit(args.time_unit, max(durations.values()))
         unit_factor = get_time_unit_factor(time_unit)
 
-        stats = {
-            name: (seconds / unit_factor, time_unit)
-            for name, seconds in raw_seconds.items()
+        return {
+            label: (seconds / unit_factor, time_unit)
+            for label, seconds in durations.items()
         }
 
-        # If there was no optimize step, Load and TOTAL are identical
-        if "Optimize time" not in stats:
-            stats.pop("Load time", None)
-
-        return stats
-
     def execute_space(self, args) -> dict[str, tuple[float, str]]:
-        """
-        Return the space used by the index files (*.sst) along with the unit.
-        """
-        index_size = util.get_total_file_size([f"{args.name}_index/*.sst"])
+        """Show how much space the index files use, and in which unit."""
+        index_size = util.get_total_file_size(self.index_size_patterns(args))
 
         size_unit = get_size_unit(args.size_unit, index_size)
         unit_factor = get_size_unit_factor(size_unit)

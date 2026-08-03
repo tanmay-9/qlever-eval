@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from mdb.commands.index_stats import parse_index_durations
+from mdb.commands.index_stats import IndexStatsCommand
 from qlever.containerize import Containerize
 from qlever.resource_usage.usage_plot import (
     UsagePlot as BaseUsagePlot,
@@ -20,7 +20,9 @@ class UsagePlot(BaseUsagePlot):
         """Shade each phase from the index log's "duration:" lines. The log
         has no timestamps, so the phases are assumed to run back to back
         from the build start."""
-        return bands_from_durations(parse_index_durations(self.log_path))
+        return bands_from_durations(
+            IndexStatsCommand().parse_index_durations(self.log_path)
+        )
 
     def subtitle(self) -> str | None:
         """Assemble a 'version | btree' line from the index args."""
